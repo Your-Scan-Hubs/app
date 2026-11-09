@@ -242,8 +242,18 @@ body.trash-mode .actionbar { display: none; }
 .sheet .tools.four { grid-template-columns: repeat(4, 1fr); margin-top: 16px; }
 .sheet .tools button span { font-size: 12px; }
 
+/* Logo（日间 A / 夜间 C） */
+.lg-d { display: none; }
+.dr-brand { display: flex; align-items: center; gap: 12px; }
+.dr-brand img { width: 52px; height: 52px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+.about-logo { text-align: center; margin: 4px 0 6px; }
+.about-logo img { width: 96px; height: 96px; border-radius: 22px; }
+.empty-logo { width: 120px; height: 120px; border-radius: 28px; margin-bottom: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+
 /* 夜间模式（跟随手机） */
 @media (prefers-color-scheme: dark) {
+  .lg-l { display: none; }
+  .lg-d { display: inline-block; }
   :root {
     --bg: #000000; --card: #141414; --ink: #F2F2F2; --ink2: #A7A7A7; --ink3: #6E6E6E;
     --line: #262626; --accent: #4D7CFF; --accent-soft: #1A2647;

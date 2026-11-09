@@ -36,6 +36,14 @@ jobs:
           sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
           grep -E "versionCode|versionName" android/app/build.gradle
 
+          # App 图标（蓝底恐龙扫描）+ 启动画面（日间 A / 夜间 C）
+          cp -r native/icon/android/. android/app/src/main/res/
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#1F5EFF</color>\n</resources>\n' > android/app/src/main/res/values/ic_launcher_background.xml
+          for f in $(find android/app/src/main/res -iname 'splash*.png'); do cp native/splash/splash-light.png "$f"; done
+          mkdir -p android/app/src/main/res/drawable-night
+          cp native/splash/splash-dark.png android/app/src/main/res/drawable-night/splash.png
+          ls android/app/src/main/res/mipmap-anydpi-v26/ && cat android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+
           # 夜间模式：让网页能跟随手机深色模式
           sed -i 's/Theme.AppCompat.Light.DarkActionBar/Theme.AppCompat.DayNight.DarkActionBar/; s/Theme.AppCompat.Light.NoActionBar/Theme.AppCompat.DayNight.NoActionBar/' android/app/src/main/res/values/styles.xml
           cat android/app/src/main/res/values/styles.xml

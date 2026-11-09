@@ -22,7 +22,7 @@ function closeDrawer() { $('#drawer').classList.remove('on'); $('#drawer-bg').cl
 function openDrawer() {
   const cnt = (f) => live().filter((d) => (d.folder || '') === f).length;
   const row = (k, icon, label, right, on) => `<button class="dr-row ${on ? 'on' : ''}" data-k="${esc(k)}">${icon}<span>${esc(label)}</span>${right != null ? `<span class="r">${esc(right)}</span>` : ''}</button>`;
-  let h = `<div class="dr-head"><div class="dr-logo">YourScan</div><div class="dr-ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div></div>`;
+  let h = `<div class="dr-head"><div class="dr-brand"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /><div class="dr-logo">YourScan</div></div><div class="dr-ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div></div>`;
   h += row('settings', I.gear, t('settings'));
   h += '<div class="dr-sep"></div>';
   h += row('__all', I.docs, t('myDocs'), live().length, curFolder === '__all');
@@ -50,7 +50,7 @@ async function drawerPick(k) {
   if (k === 'managefolders') return manageFolders();
   if (k === 'backup') return backupSheet();
   if (k === 'help') return actionSheet(t('help'), [{ label: t('gotIt'), value: 'ok' }], '', t('helpHtml'));
-  if (k === 'about') return actionSheet('YourScan', [{ label: t('gotIt'), value: 'ok' }], `${t('version')} ${APP_VER || '1.0'} · ${t('aboutText')}`);
+  if (k === 'about') return actionSheet('YourScan', [{ label: t('gotIt'), value: 'ok' }], `${t('version')} ${APP_VER || '1.0'} · ${t('aboutText')}`, '<div class="about-logo"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /></div>');
   if (k === 'newfolder') {
     const n = await promptSheet(t('newFolder'), '', t('folderPh'));
     if (!n) return;
