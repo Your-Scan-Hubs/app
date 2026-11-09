@@ -100,6 +100,11 @@
 
   <!-- 隐藏的文件选择 -->
   <input id="file-input" type="file" accept="image/*" multiple hidden />
+  <input id="zip-input" type="file" accept=".zip,application/zip,application/x-zip-compressed,application/octet-stream" hidden />
+
+  <!-- 侧边菜单 -->
+  <div class="drawer-bg" id="drawer-bg"></div>
+  <aside class="drawer" id="drawer"></aside>
 
   <!-- 弹层 -->
   <div class="sheet-bg" id="sheet-bg"></div>
@@ -110,6 +115,7 @@
   <script src="vendor/capacitor.js"></script>
   <script src="vendor/pdf-lib.min.js"></script>
   <script src="vendor/Sortable.min.js"></script>
+  <script src="vendor/jszip.min.js"></script>
   <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>

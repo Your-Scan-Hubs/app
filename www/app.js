@@ -48,6 +48,13 @@ const I = {
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
   check: '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+  gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  backup: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 8v4l3 2"/></svg>',
+  restore: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+  help: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7M12 17h.01"/></svg>',
+  info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>',
+  upload: '<svg viewBox="0 0 24 24"><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>',
   globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
   docs: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
   share: '<svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/></svg>',
@@ -265,6 +272,7 @@ let toastT;
 function toast(msg, ms = 2400) {
   const el = $('#toast');
   el.textContent = msg;
+  el.classList.toggle('top', sheetOpen());
   el.classList.add('on');
   clearTimeout(toastT);
   toastT = setTimeout(() => el.classList.remove('on'), ms);
@@ -296,8 +304,8 @@ const sheetOpen = () => $('#sheet').classList.contains('on');
 $('#sheet-bg').addEventListener('click', () => closeSheet(null));
 
 /** 动作列表 */
-function actionSheet(title, items, desc) {
-  const html = (title ? `<h3>${esc(title)}</h3>` : '') + (desc ? `<p class="desc">${esc(desc)}</p>` : '') +
+function actionSheet(title, items, desc, rawHtml) {
+  const html = (title ? `<h3>${esc(title)}</h3>` : '') + (desc ? `<p class="desc">${esc(desc)}</p>` : '') + (rawHtml ? `<div class="help">${rawHtml}</div>` : '') +
     items.map((it, i) => `<button class="row ${it.danger ? 'danger' : ''} ${it.on ? 'on' : ''}" data-i="${i}">${it.icon || ''}<span>${esc(it.label)}</span>${it.right != null ? `<span class="r">${esc(it.right)}</span>` : ''}</button>`).join('');
   return openSheet(html, (sh) => {
     $$('.row', sh).forEach((b) => b.addEventListener('click', () => {
@@ -358,34 +366,115 @@ const safeName = (s) => (s || 'YourScan').replace(/[\\/:*?"<>|\n\r\t]+/g, '_').r
 let curFolder = '__all';
 let query = '';
 
+const live = () => DB.docs.filter((d) => !d.trashed);
+const trashed = () => DB.docs.filter((d) => d.trashed);
+const TRASH_DAYS = 30;
+
 function folderTitle() {
+  if (curFolder === '__trash') return t('trash');
   if (curFolder === '__all') return t('myDocs');
   if (curFolder === '') return t('uncat');
   return curFolder;
 }
 
-/** ☰ 文件夹抽屉 */
-async function folderMenu() {
-  const cnt = (f) => DB.docs.filter((d) => (d.folder || '') === f).length;
-  const items = [{ icon: I.docs, label: t('myDocs'), right: String(DB.docs.length), value: '__all', on: curFolder === '__all' }];
-  if (DB.folders.length) items.push({ icon: I.folder, label: t('uncat'), right: String(cnt('')), value: '__none', on: curFolder === '' });
-  DB.folders.forEach((f) => items.push({ icon: I.folder, label: f, right: String(cnt(f)), value: 'f:' + f, on: curFolder === f }));
-  items.push({ icon: I.plus, label: t('newFolder'), value: '__new' });
-  if (DB.folders.length) items.push({ icon: I.edit, label: t('manageFolders'), value: '__manage' });
-  const v = await actionSheet(t('folder'), items);
-  if (v == null) return;
-  if (v === '__all') curFolder = '__all';
-  else if (v === '__none') curFolder = '';
-  else if (v.startsWith && v.startsWith('f:')) curFolder = v.slice(2);
-  else if (v === '__new') {
+/* ---------- ☰ 侧边菜单 ---------- */
+let APP_VER = '';
+function drawerOpen() { return $('#drawer').classList.contains('on'); }
+function closeDrawer() { $('#drawer').classList.remove('on'); $('#drawer-bg').classList.remove('on'); }
+function openDrawer() {
+  const cnt = (f) => live().filter((d) => (d.folder || '') === f).length;
+  const row = (k, icon, label, right, on) => `<button class="dr-row ${on ? 'on' : ''}" data-k="${esc(k)}">${icon}<span>${esc(label)}</span>${right != null ? `<span class="r">${esc(right)}</span>` : ''}</button>`;
+  let h = `<div class="dr-head"><div class="dr-logo">YourScan</div><div class="dr-ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div></div>`;
+  h += row('settings', I.gear, t('settings'));
+  h += '<div class="dr-sep"></div>';
+  h += row('__all', I.docs, t('myDocs'), live().length, curFolder === '__all');
+  if (DB.folders.length) h += row('__none', I.folder, t('uncat'), cnt(''), curFolder === '');
+  DB.folders.forEach((f) => { h += row('f:' + f, I.folder, f, cnt(f), curFolder === f); });
+  h += row('newfolder', I.plus, t('newFolder'));
+  if (DB.folders.length) h += row('managefolders', I.edit, t('manageFolders'));
+  h += '<div class="dr-sep"></div>';
+  h += row('backup', I.backup, t('backupRestore'));
+  h += row('__trash', I.trash, `${t('trash')} (${trashed().length})`, null, curFolder === '__trash');
+  h += '<div class="dr-sep"></div>';
+  h += row('help', I.help, t('help'));
+  h += row('about', I.info, t('about'));
+  $('#drawer').innerHTML = h;
+  $$('#drawer .dr-row').forEach((b) => b.addEventListener('click', () => drawerPick(b.dataset.k)));
+  $('#drawer-bg').classList.add('on');
+  $('#drawer').classList.add('on');
+}
+async function drawerPick(k) {
+  closeDrawer();
+  if (k === '__all' || k === '__trash') { curFolder = k; return renderHome(); }
+  if (k === '__none') { curFolder = ''; return renderHome(); }
+  if (k.startsWith('f:')) { curFolder = k.slice(2); return renderHome(); }
+  if (k === 'settings') return settingsSheet();
+  if (k === 'managefolders') return manageFolders();
+  if (k === 'backup') return backupSheet();
+  if (k === 'help') return actionSheet(t('help'), [{ label: t('gotIt'), value: 'ok' }], '', t('helpHtml'));
+  if (k === 'about') return actionSheet('YourScan', [{ label: t('gotIt'), value: 'ok' }], `${t('version')} ${APP_VER || '1.0'} · ${t('aboutText')}`);
+  if (k === 'newfolder') {
     const n = await promptSheet(t('newFolder'), '', t('folderPh'));
     if (!n) return;
     if (DB.folders.includes(n)) return toast(t('folderExists'));
     DB.folders.push(n);
     await saveDB();
     curFolder = n;
-  } else if (v === '__manage') return manageFolders();
+    renderHome();
+  }
+}
+$('#drawer-bg').addEventListener('click', closeDrawer);
+
+/* ---------- 回收站 ---------- */
+async function trashDoc(d) {
+  d.trashed = Date.now();
+  await saveDB();
+  toast(t('movedToTrash'));
+}
+async function restoreDoc(d) {
+  delete d.trashed;
+  await saveDB();
+  toast(t('restored'));
+}
+async function purgeDoc(d) {
+  DB.docs = DB.docs.filter((x) => x.id !== d.id);
+  await store.rmdir('docs/' + d.id);
+}
+async function trashRowMenu(d) {
+  const left = Math.max(0, TRASH_DAYS - Math.floor((Date.now() - d.trashed) / 86400000));
+  const v = await actionSheet(d.name, [
+    { icon: I.restore, label: t('restore'), value: 'restore' },
+    { icon: I.trash, label: t('delForever'), value: 'purge', danger: true },
+  ], t('trashLeft', { n: left }));
+  if (v === 'restore') await restoreDoc(d);
+  else if (v === 'purge') {
+    if (!(await confirmSheet(t('delQ', { name: d.name }), t('delD'), t('del'), true))) return;
+    await purgeDoc(d);
+    await saveDB();
+    toast(t('deleted'));
+  } else return;
   renderHome();
+}
+async function trashTopMenu() {
+  const n = trashed().length;
+  const v = await actionSheet(t('trash'), [
+    { icon: I.restore, label: t('restoreAll'), value: 'restore' },
+    { icon: I.trash, label: t('emptyTrash'), value: 'empty', danger: true },
+  ], t('trashHint', { n: TRASH_DAYS }));
+  if (!n || v == null) return;
+  if (v === 'restore') { trashed().forEach((d) => delete d.trashed); await saveDB(); toast(t('restored')); }
+  if (v === 'empty') {
+    if (!(await confirmSheet(t('emptyTrashQ', { n }), t('delD'), t('del'), true))) return;
+    for (const d of trashed()) await purgeDoc(d);
+    await saveDB();
+    toast(t('deleted'));
+  }
+  renderHome();
+}
+async function autoPurge() {
+  const old = trashed().filter((d) => Date.now() - d.trashed > TRASH_DAYS * 86400000);
+  for (const d of old) await purgeDoc(d);
+  if (old.length) await saveDB();
 }
 
 function matchDoc(d, toks) {
@@ -408,10 +497,12 @@ function matchDoc(d, toks) {
 }
 
 function renderHome() {
-  if (curFolder !== '__all' && curFolder !== '' && !DB.folders.includes(curFolder)) curFolder = '__all';
+  if (!['__all', '__trash', ''].includes(curFolder) && !DB.folders.includes(curFolder)) curFolder = '__all';
+  const inTrash = curFolder === '__trash';
+  document.body.classList.toggle('trash-mode', inTrash);
   const toks = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const list = DB.docs
-    .filter((d) => curFolder === '__all' || (d.folder || '') === curFolder)
+  const list = (inTrash ? trashed() : live())
+    .filter((d) => inTrash || curFolder === '__all' || (d.folder || '') === curFolder)
     .map((d) => ({ d, m: matchDoc(d, toks) }))
     .filter((x) => x.m.ok)
     .sort((a, b) => b.d.updated - a.d.updated);
@@ -422,22 +513,22 @@ function renderHome() {
       <div class="info">
         <div class="nm">${esc(d.name)}</div>
         <div class="sub">${fmtSize(d.size)}<span class="pc">${d.pages.length}</span>${curFolder === '__all' && d.folder ? `<span class="tag">${esc(d.folder)}</span>` : ''}</div>
-        <div class="sub">${fmtDate(d.updated)}</div>
+        <div class="sub">${fmtDate(inTrash ? d.trashed : d.updated)}</div>
         ${m.hit ? `<div class="hit">${m.hit}</div>` : ''}
       </div>
       <button class="icon-btn dots" aria-label="more"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
     </div>`).join('');
   $$('#doc-list .doc').forEach((row) => {
-    row.addEventListener('click', () => openDetail(row.dataset.id));
+    const d = docById(row.dataset.id);
+    row.addEventListener('click', () => (inTrash ? trashRowMenu(d) : openDetail(d.id)));
     $('.dots', row).addEventListener('click', (e) => {
       e.stopPropagation();
-      const d = docById(row.dataset.id);
-      if (d) moreSheet(d, true);
+      if (inTrash) trashRowMenu(d); else moreSheet(d, true);
     });
   });
   const empty = !list.length;
   $('#empty').hidden = !empty;
-  if (empty) $('#empty-text').innerHTML = query ? t('emptySearch') : DB.docs.length ? t('emptyFolder') : t('emptyNone');
+  if (empty) $('#empty-text').innerHTML = query ? t('emptySearch') : inTrash ? t('trashEmpty') : live().length ? t('emptyFolder') : t('emptyNone');
 }
 
 function openSearch(on) {
@@ -448,13 +539,13 @@ function openSearch(on) {
 }
 $('#btn-search').addEventListener('click', () => openSearch(true));
 $('#search-close').addEventListener('click', () => openSearch(false));
-$('#btn-menu').addEventListener('click', folderMenu);
+$('#btn-menu').addEventListener('click', openDrawer);
 $('#q').addEventListener('input', (e) => { query = e.target.value.trim(); renderHome(); });
 
 /* ---------- 文件夹管理 ---------- */
 async function manageFolders() {
   const items = [{ icon: I.plus, label: t('newFolder'), value: '__new' }]
-    .concat(DB.folders.map((f) => ({ icon: I.folder, label: f, right: t('nItems', { n: DB.docs.filter((d) => d.folder === f).length }), value: f })));
+    .concat(DB.folders.map((f) => ({ icon: I.folder, label: f, right: t('nItems', { n: live().filter((d) => d.folder === f).length }), value: f })));
   const v = await actionSheet(t('folder'), items, DB.folders.length ? t('folderHint') : '');
   if (v == null) return;
   if (v === '__new') {
@@ -949,11 +1040,7 @@ async function moreSheet(d, fromHome) {
       after(nid);
     } catch (e) { busy(false); toast(t('dupFail')); }
   } else if (v === 'del') {
-    if (!(await confirmSheet(t('delQ', { name: d.name }), t('delD'), t('del'), true))) return;
-    DB.docs = DB.docs.filter((x) => x.id !== d.id);
-    await saveDB();
-    await store.rmdir('docs/' + d.id);
-    toast(t('deleted'));
+    await trashDoc(d);
     if (fromHome) renderHome(); else detailBack();
   }
 }
@@ -974,7 +1061,7 @@ async function runOcrQueue(force) {
   ocrRunning = true;
   try {
     for (;;) {
-      const d = DB.docs.find((x) => x.ocr === 'pending');
+      const d = DB.docs.find((x) => x.ocr === 'pending' && !x.trashed);
       if (!d) break;
       const sig = d.pages.map((p) => p.f).join('|');
       const texts = [];
@@ -1006,11 +1093,105 @@ async function runOcrQueue(force) {
 }
 
 /* =========================================================
+   备份 / 还原（打包成 .zip）
+   ========================================================= */
+async function backupSheet() {
+  const v = await actionSheet(t('backupRestore'), [
+    { icon: I.download, label: t('backupNow'), right: String(live().length), value: 'b' },
+    { icon: I.upload, label: t('restoreFrom'), value: 'r' },
+  ], t('backupHint'));
+  if (v === 'b') return makeBackup();
+  if (v === 'r') return doRestore();
+}
+
+const docFiles = (d) => [...d.pages.map((p) => p.f), d.pdf, d.thumb].filter(Boolean);
+
+async function makeBackup() {
+  const docs = live();
+  if (!docs.length) return toast(t('nothingToBackup'));
+  try {
+    const zip = new JSZip();
+    zip.file('yourscan.json', JSON.stringify({ app: 'YourScan', v: 1, created: Date.now(), folders: DB.folders, docs }));
+    for (let i = 0; i < docs.length; i++) {
+      busy(t('backingUp', { i: i + 1, n: docs.length }));
+      const d = docs[i];
+      for (const f of docFiles(d)) {
+        try { zip.file(`docs/${d.id}/${f}`, await store.read(`docs/${d.id}/${f}`)); } catch (e) {}
+      }
+    }
+    busy(t('packing'));
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const dt = new Date();
+    const name = `YourScan_backup_${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}_${pad(dt.getHours())}${pad(dt.getMinutes())}.zip`;
+    if (!NATIVE) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name; a.click();
+      busy(false);
+      return;
+    }
+    await store.clearShare();
+    const uri = await store.blobToShare(name, blob);
+    busy(false);
+    await ShareP.share({ title: name, files: [uri], dialogTitle: t('backupNow') });
+  } catch (e) {
+    busy(false);
+    if (!/cancel/i.test(e.message || '')) toast(t('backupFail') + (e.message || e), 4000);
+  }
+}
+
+function pickZip() {
+  return new Promise((res) => {
+    const inp = $('#zip-input');
+    inp.value = '';
+    inp.onchange = () => res(inp.files && inp.files[0] ? inp.files[0] : null);
+    inp.click();
+  });
+}
+
+async function doRestore() {
+  const file = await pickZip();
+  if (!file) return;
+  busy(t('readingBackup'));
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const meta = zip.file('yourscan.json');
+    if (!meta) throw new Error(t('badBackup'));
+    const data = JSON.parse(await meta.async('string'));
+    const docs = Array.isArray(data.docs) ? data.docs : [];
+    let added = 0, skipped = 0;
+    for (let i = 0; i < docs.length; i++) {
+      const d = docs[i];
+      if (!d || !d.id || !Array.isArray(d.pages)) continue;
+      if (docById(d.id)) { skipped++; continue; }
+      busy(t('restoring', { i: i + 1, n: docs.length }));
+      for (const f of docFiles(d)) {
+        const zf = zip.file(`docs/${d.id}/${f}`);
+        if (zf) await store.write(`docs/${d.id}/${f}`, await zf.async('blob'));
+      }
+      delete d.trashed;
+      if (d.folder && !DB.folders.includes(d.folder)) DB.folders.push(d.folder);
+      DB.docs.push(d);
+      added++;
+    }
+    (data.folders || []).forEach((f) => { if (typeof f === 'string' && !DB.folders.includes(f)) DB.folders.push(f); });
+    await saveDB();
+    busy(false);
+    toast(t('restoredN', { n: added }) + (skipped ? ' · ' + t('skippedN', { n: skipped }) : ''), 3500);
+    curFolder = '__all';
+    renderHome();
+    runOcrQueue();
+  } catch (e) {
+    busy(false);
+    toast(t('restoreFail') + (e.message || e), 4500);
+  }
+}
+
+/* =========================================================
    设置
    ========================================================= */
 async function settingsSheet() {
   const s = DB.settings;
-  const total = DB.docs.reduce((a, d) => a + (d.size || 0), 0);
+  const total = live().reduce((a, d) => a + (d.size || 0), 0);
   const langName = s.lang && s.lang !== 'auto' ? LANGS[s.lang] : t('langAuto');
   const v = await actionSheet(t('settings'), [
     { icon: I.globe, label: t('language'), right: langName, value: 'lang' },
@@ -1019,7 +1200,7 @@ async function settingsSheet() {
     { label: t('prefix'), right: (s.prefix || '').trim() || t('defaultPrefix'), value: 'n' },
     { label: t('manageFolders'), right: String(DB.folders.length), value: 'f' },
     { label: t('about'), value: 'about' },
-  ], t('setSummary', { n: DB.docs.length, size: fmtSize(total) }));
+  ], t('setSummary', { n: live().length, size: fmtSize(total) }));
   if (v === 'lang') {
     const cur = s.lang || 'auto';
     const k = await actionSheet(t('language'), [['auto', t('langAuto')], ...Object.entries(LANGS)].map(([k, n]) => ({ label: n, value: k, on: k === cur, right: k === cur ? '✓' : null })));
@@ -1051,7 +1232,7 @@ function applyLang() {
   else if (VIEW === 'detail' && DT) openDetail(DT);
   else if (VIEW === 'editor' && ED) { const nm = $('#ed-name').value; openEditorView(); $('#ed-name').value = nm; }
 }
-$('#btn-settings').addEventListener('click', settingsSheet);
+$('#btn-settings').addEventListener('click', () => (curFolder === '__trash' ? trashTopMenu() : settingsSheet()));
 
 /* =========================================================
    入口按钮 / 返回键 / 分享进来
@@ -1087,6 +1268,7 @@ if (AppP) {
   AppP.addListener('backButton', () => {
     if (!$('#busy').hidden) return;
     if (sheetOpen()) return closeSheet(null);
+    if (drawerOpen()) return closeDrawer();
     if (VIEW === 'editor') return editorBack();
     if (VIEW === 'detail') return detailBack();
     if (SHARE_MODE) return finishShare();
@@ -1106,6 +1288,8 @@ if (AppP) {
     setLang(null);
     toast(t('loadFail') + (e.message || e), 5000);
   }
+  if (AppP) { try { APP_VER = (await AppP.getInfo()).version; } catch (e) {} }
+  await autoPurge();
   applyLang();
   await checkShareIntent();
   runOcrQueue();
