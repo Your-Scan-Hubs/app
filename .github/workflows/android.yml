@@ -50,7 +50,7 @@ jobs:
 
           # 3) 原生代码：OCR 插件 + MainActivity
           JAVA_DIR=android/app/src/main/java/com/yourscanhubs/app
-          cp native/android/OcrPlugin.java native/android/MainActivity.java $JAVA_DIR/
+          cp native/android/OcrPlugin.java native/android/YsNativePlugin.java native/android/MainActivity.java $JAVA_DIR/
 
           # 4) 让 YourScan 出现在“分享”菜单里（接收一张或多张图片）
           python3 - <<'PY'

@@ -38,64 +38,80 @@
     </nav>
   </section>
 
-  <!-- ========== 编辑页 ========== -->
-  <section id="v-editor" class="view">
-    <header class="top">
-      <button class="icon-btn" id="ed-back" aria-label="返回"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-      <h2 id="ed-title"></h2>
-      <button class="pill-btn" id="ed-save"></button>
+  <!-- ========== 文件页（页面格子） ========== -->
+  <section id="v-doc" class="view">
+    <header class="top home-top">
+      <button class="icon-btn" id="doc-back" aria-label="back"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+      <h2 id="doc-title" class="tap"></h2>
+      <button class="icon-btn pdf-btn" id="doc-pdf" aria-label="pdf"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><b>PDF</b></button>
+      <button class="icon-btn" id="doc-menu" aria-label="menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
     </header>
-
-    <div class="ed-scroll">
-      <div class="field">
-        <label data-i18n="fileName"></label>
-        <input id="ed-name" type="text" />
-      </div>
-      <div class="field">
-        <label data-i18n="folder"></label>
-        <select id="ed-folder"></select>
-      </div>
-
-      <div class="ed-hint" data-i18n="edHint"></div>
-      <div class="pages" id="ed-pages"></div>
-
-      <div class="add-row">
-        <button class="ghost" id="ed-add-scan"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="scanMore"></span></button>
-        <button class="ghost" id="ed-add-gallery"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="addPhotos"></span></button>
-      </div>
-
-      <div class="opts">
-        <div class="opt">
-          <label data-i18n="filterAll"></label>
-          <div class="seg" id="ed-filter-all"></div>
-        </div>
-        <div class="opt">
-          <label data-i18n="paper"></label>
-          <div class="seg" id="ed-paper"></div>
-        </div>
-        <div class="opt">
-          <label data-i18n="quality"></label>
-          <div class="seg" id="ed-quality"></div>
-        </div>
-      </div>
-    </div>
+    <main class="pgrid" id="doc-pages"></main>
+    <nav class="actionbar docbar">
+      <button class="sq sm" id="doc-add-gallery" aria-label="gallery"><svg viewBox="0 0 24 24" class="fill"><path d="M3 19 9 11l4 5 3-4 5 7z"/></svg></button>
+      <button class="sq sm" id="doc-add-scan" aria-label="scan"><svg viewBox="0 0 24 24"><path d="M8 6l1.6-2h4.8L16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+      <span class="flex"></span>
+      <button class="tb" id="doc-share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg><span data-i18n="share"></span></button>
+      <button class="tb" id="doc-more"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg><span data-i18n="more"></span></button>
+    </nav>
   </section>
 
-  <!-- ========== 文件详情 ========== -->
-  <section id="v-detail" class="view">
-    <header class="top">
-      <button class="icon-btn" id="dt-back" aria-label="返回"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-      <h2 id="dt-title"></h2>
-      <button class="icon-btn" id="dt-more" aria-label="更多"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></button>
+  <!-- ========== 单页（左右滑） ========== -->
+  <section id="v-page" class="view darkview">
+    <header class="top home-top">
+      <button class="icon-btn" id="pg-back" aria-label="back"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+      <h2 id="pg-title"></h2>
+      <button class="icon-btn" id="pg-crop" aria-label="crop"><svg viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg></button>
+      <button class="icon-btn" id="pg-filter" aria-label="filter"><svg viewBox="0 0 24 24"><path d="m15 4 5 5L9 20H4v-5z"/><path d="M13 6l5 5"/></svg></button>
+      <button class="icon-btn" id="pg-more" aria-label="more"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
     </header>
-    <div class="dt-meta" id="dt-meta"></div>
-    <div class="dt-actions">
-      <button id="dt-share-pdf"><svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/></svg><span data-i18n="sharePdf"></span></button>
-      <button id="dt-share-img"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><span data-i18n="shareImg"></span></button>
-      <button id="dt-text"><svg viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg><span data-i18n="text"></span></button>
-      <button id="dt-edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span data-i18n="editPages"></span></button>
+    <div class="slides" id="pg-slides"></div>
+    <div class="pg-ind" id="pg-ind"></div>
+    <nav class="toolbar">
+      <button class="tb" id="pg-ocr"><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 9h8M8 12h8M8 15h5"/></svg><span>OCR</span></button>
+      <button class="tb" id="pg-rotate"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span data-i18n="rotate"></span></button>
+      <span class="flex"></span>
+      <button class="tb" id="pg-share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg><span data-i18n="share"></span></button>
+      <button class="tb" id="pg-del"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg><span data-i18n="del"></span></button>
+    </nav>
+  </section>
+
+  <!-- ========== 边界调整 ========== -->
+  <section id="v-crop" class="view darkview">
+    <header class="top home-top">
+      <button class="icon-btn" id="cr-back" aria-label="back"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+      <h2 data-i18n="cropTitle"></h2>
+    </header>
+    <div class="stage" id="cr-stage"><img id="cr-img" alt="" /><svg id="cr-svg"></svg></div>
+    <nav class="toolbar">
+      <button class="tb" id="cr-full"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg><span data-i18n="fullPage"></span></button>
+      <button class="tb" id="cr-rl"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span data-i18n="rotateLeft"></span></button>
+      <button class="tb" id="cr-rr"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span data-i18n="rotateRight"></span></button>
+      <span class="flex"></span>
+      <button class="tb ok" id="cr-ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="done"></span></button>
+    </nav>
+  </section>
+
+  <!-- ========== 滤镜 ========== -->
+  <section id="v-filter" class="view darkview">
+    <header class="top home-top">
+      <button class="icon-btn" id="fl-back" aria-label="back"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+      <h2 data-i18n="filterTitle"></h2>
+      <button class="pill-btn ghostpill" id="fl-all" data-i18n="applyAll"></button>
+    </header>
+    <div class="ftabs" id="fl-tabs"></div>
+    <div class="stage fstage"><img id="fl-img" alt="" /></div>
+    <div class="sliders">
+      <label><span data-i18n="brightness"></span><input type="range" id="fl-b" min="-50" max="50" step="1" value="0" /><em id="fl-bv">0</em></label>
+      <label><span data-i18n="contrast"></span><input type="range" id="fl-c" min="-50" max="50" step="1" value="0" /><em id="fl-cv">0</em></label>
     </div>
-    <div class="dt-pages" id="dt-pages"></div>
+    <nav class="toolbar">
+      <button class="tb" id="fl-rl"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span data-i18n="rotateLeft"></span></button>
+      <button class="tb" id="fl-rr"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span data-i18n="rotateRight"></span></button>
+      <button class="tb" id="fl-reset"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg><span data-i18n="reset"></span></button>
+      <span class="flex"></span>
+      <button class="tb ok" id="fl-ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="done"></span></button>
+    </nav>
   </section>
 
   <!-- 隐藏的文件选择 -->
@@ -117,6 +133,9 @@
   <script src="vendor/Sortable.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="i18n.js"></script>
-  <script src="app.js"></script>
+  <script src="core.js"></script>
+  <script src="home.js"></script>
+  <script src="doc.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
