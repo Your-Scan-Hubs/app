@@ -23,18 +23,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------- 常量 ---------- */
 const FILTERS = [
-  { k: 'none', n: '原图', css: 'none' },
-  { k: 'enhance', n: '增强', css: 'contrast(1.28) brightness(1.08) saturate(1.15)' },
-  { k: 'gray', n: '灰度', css: 'grayscale(1) contrast(1.2) brightness(1.05)' },
-  { k: 'bw', n: '黑白', css: 'grayscale(1) contrast(2.4) brightness(1.18)' },
+  { k: 'none', n: 'fNone', css: 'none' },
+  { k: 'enhance', n: 'fEnhance', css: 'contrast(1.28) brightness(1.08) saturate(1.15)' },
+  { k: 'gray', n: 'fGray', css: 'grayscale(1) contrast(1.2) brightness(1.05)' },
+  { k: 'bw', n: 'fBw', css: 'grayscale(1) contrast(2.4) brightness(1.18)' },
 ];
 const fcss = (k) => (FILTERS.find((f) => f.k === k) || FILTERS[0]).css;
 const QUALITY = {
-  hd: { n: '清晰', max: 2480, q: 0.88 },
-  std: { n: '标准', max: 1800, q: 0.8 },
-  small: { n: '小文件', max: 1240, q: 0.66 },
+  hd: { n: 'qHd', max: 2480, q: 0.88 },
+  std: { n: 'qStd', max: 1800, q: 0.8 },
+  small: { n: 'qSmall', max: 1240, q: 0.66 },
 };
-const PAPER = { a4: 'A4', auto: '按原图' };
+const PAPER = { a4: 'pA4', auto: 'pAuto' };
 const STORE_MAX = 2480; // 导入时保存的原图最长边
 const A4 = [595.28, 841.89];
 
@@ -48,6 +48,9 @@ const I = {
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
   check: '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+  globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  docs: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
+  share: '<svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/></svg>',
   dup: '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>',
 };
 
@@ -78,7 +81,7 @@ function nativeStore() {
     },
     async read(p) {
       const r = await fetch(C.convertFileSrc(base + p));
-      if (!r.ok) throw new Error('读取失败 ' + p);
+      if (!r.ok) throw new Error(t('readFail') + ' ' + p);
       return r.blob();
     },
     async readText(p) {
@@ -120,7 +123,7 @@ function webStore() {
       return urls.get(p) || '';
     },
     async write(p, blob) { m.set(p, blob); urls.delete(p); },
-    async read(p) { if (!m.has(p)) throw new Error('读取失败 ' + p); return m.get(p); },
+    async read(p) { if (!m.has(p)) throw new Error(t('readFail') + ' ' + p); return m.get(p); },
     async readText(p) { try { return localStorage.getItem('ys:' + p); } catch (e) { return null; } },
     async writeText(p, t) { try { localStorage.setItem('ys:' + p, t); } catch (e) {} },
     async move(a, b) { m.set(b, m.get(a)); m.delete(a); urls.delete(a); },
@@ -136,7 +139,7 @@ function webStore() {
 const store = NATIVE ? nativeStore() : webStore();
 
 /* ---------- 索引（文件列表/文件夹/设置） ---------- */
-let DB = { v: 1, docs: [], folders: [], settings: { quality: 'std', paper: 'a4', prefix: '扫描' } };
+let DB = { v: 1, docs: [], folders: [], settings: { quality: 'std', paper: 'a4', prefix: '', lang: 'auto' } };
 async function loadDB() {
   const t = await store.readText('index.json');
   if (t) {
@@ -210,7 +213,7 @@ async function importMany(docId, blobs, filter = 'none') {
   const pages = [];
   let bad = 0;
   for (let i = 0; i < blobs.length; i++) {
-    busy(`正在导入 ${i + 1} / ${blobs.length}`);
+    busy(t('importing', { i: i + 1, n: blobs.length }));
     try {
       const p = await importImage(docId, blobs[i]);
       p.filter = filter;
@@ -220,7 +223,7 @@ async function importMany(docId, blobs, filter = 'none') {
     }
   }
   busy(false);
-  if (bad) toast(`${bad} 张图片无法读取（格式不支持），已跳过`);
+  if (bad) toast(t('badImgs', { n: bad }));
   return pages;
 }
 
@@ -233,7 +236,7 @@ async function buildPdf(docId, pages, paper, quality, title) {
   pdf.setProducer('YourScan');
   const Q = QUALITY[quality] || QUALITY.std;
   for (let i = 0; i < pages.length; i++) {
-    busy(`正在生成 PDF ${i + 1} / ${pages.length}`);
+    busy(t('makingPdf', { i: i + 1, n: pages.length }));
     const pg = pages[i];
     const bmp = await decode(await store.read(`docs/${docId}/${pg.f}`));
     const out = await render(bmp, { max: Q.max, filter: pg.filter, q: Q.q });
@@ -260,16 +263,16 @@ async function buildPdf(docId, pages, paper, quality, title) {
    ========================================================= */
 let toastT;
 function toast(msg, ms = 2400) {
-  const t = $('#toast');
-  t.textContent = msg;
-  t.classList.add('on');
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('on');
   clearTimeout(toastT);
-  toastT = setTimeout(() => t.classList.remove('on'), ms);
+  toastT = setTimeout(() => el.classList.remove('on'), ms);
 }
 function busy(text) {
   const b = $('#busy');
   if (text === false) { b.hidden = true; return; }
-  $('#busy-text').textContent = text || '处理中…';
+  $('#busy-text').textContent = text || t('busy');
   b.hidden = false;
 }
 
@@ -303,8 +306,8 @@ function actionSheet(title, items, desc) {
     }));
   });
 }
-function promptSheet(title, value = '', placeholder = '', okLabel = '确定') {
-  return openSheet(`<h3>${esc(title)}</h3><input type="text" id="pr-in" value="${esc(value)}" placeholder="${esc(placeholder)}" /><div class="btns"><button id="pr-no">取消</button><button class="primary" id="pr-ok">${esc(okLabel)}</button></div>`, (sh) => {
+function promptSheet(title, value = '', placeholder = '', okLabel = t('ok')) {
+  return openSheet(`<h3>${esc(title)}</h3><input type="text" id="pr-in" value="${esc(value)}" placeholder="${esc(placeholder)}" /><div class="btns"><button id="pr-no">${t('cancel')}</button><button class="primary" id="pr-ok">${esc(okLabel)}</button></div>`, (sh) => {
     const inp = $('#pr-in', sh);
     setTimeout(() => { inp.focus(); inp.select(); }, 250);
     const ok = () => { const v = inp.value.trim(); if (!v) { inp.focus(); return; } closeSheet(v); };
@@ -313,8 +316,8 @@ function promptSheet(title, value = '', placeholder = '', okLabel = '确定') {
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); });
   });
 }
-function confirmSheet(title, desc, okLabel = '确定', danger = false) {
-  return openSheet(`<h3>${esc(title)}</h3>${desc ? `<p class="desc">${esc(desc)}</p>` : ''}<div class="btns"><button id="cf-no">取消</button><button class="${danger ? 'danger' : 'primary'}" id="cf-ok">${esc(okLabel)}</button></div>`, (sh) => {
+function confirmSheet(title, desc, okLabel = t('ok'), danger = false) {
+  return openSheet(`<h3>${esc(title)}</h3>${desc ? `<p class="desc">${esc(desc)}</p>` : ''}<div class="btns"><button id="cf-no">${t('cancel')}</button><button class="${danger ? 'danger' : 'primary'}" id="cf-ok">${esc(okLabel)}</button></div>`, (sh) => {
     $('#cf-ok', sh).onclick = () => closeSheet(true);
     $('#cf-no', sh).onclick = () => closeSheet(false);
   }).then((v) => !!v);
@@ -332,9 +335,9 @@ const pad = (n) => String(n).padStart(2, '0');
 function fmtDate(ts) {
   const d = new Date(ts), now = new Date();
   const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  if (d.toDateString() === now.toDateString()) return '今天 ' + hm;
+  if (d.toDateString() === now.toDateString()) return t('today') + ' ' + hm;
   const y = new Date(now); y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return '昨天 ' + hm;
+  if (d.toDateString() === y.toDateString()) return t('yesterday') + ' ' + hm;
   return (d.getFullYear() === now.getFullYear() ? '' : d.getFullYear() + '/') + `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
 function fmtSize(b) {
@@ -344,7 +347,7 @@ function fmtSize(b) {
 }
 function defaultName() {
   const d = new Date();
-  const p = (DB.settings.prefix || '扫描').trim() || '扫描';
+  const p = (DB.settings.prefix || '').trim() || t('defaultPrefix');
   return `${p}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 const safeName = (s) => (s || 'YourScan').replace(/[\\/:*?"<>|\n\r\t]+/g, '_').replace(/^\.+/, '').slice(0, 80).trim() || 'YourScan';
@@ -355,17 +358,34 @@ const safeName = (s) => (s || 'YourScan').replace(/[\\/:*?"<>|\n\r\t]+/g, '_').r
 let curFolder = '__all';
 let query = '';
 
-function renderChips() {
-  const counts = {};
-  DB.docs.forEach((d) => { counts[d.folder || ''] = (counts[d.folder || ''] || 0) + 1; });
-  const chips = [{ k: '__all', n: `全部 ${DB.docs.length || ''}`.trim() }];
-  if (DB.folders.length && counts['']) chips.push({ k: '', n: `未分类 ${counts['']}` });
-  DB.folders.forEach((f) => chips.push({ k: f, n: `${f} ${counts[f] || ''}`.trim() }));
-  if (curFolder !== '__all' && curFolder !== '' && !DB.folders.includes(curFolder)) curFolder = '__all';
-  $('#folder-chips').innerHTML = chips.map((c) => `<button class="chip ${c.k === curFolder ? 'on' : ''}" data-k="${esc(c.k)}">${esc(c.n)}</button>`).join('') +
-    `<button class="chip add" id="chip-add">${I.plus}文件夹</button>`;
-  $$('#folder-chips .chip[data-k]').forEach((b) => b.addEventListener('click', () => { curFolder = b.dataset.k; renderHome(); }));
-  $('#chip-add').addEventListener('click', manageFolders);
+function folderTitle() {
+  if (curFolder === '__all') return t('myDocs');
+  if (curFolder === '') return t('uncat');
+  return curFolder;
+}
+
+/** ☰ 文件夹抽屉 */
+async function folderMenu() {
+  const cnt = (f) => DB.docs.filter((d) => (d.folder || '') === f).length;
+  const items = [{ icon: I.docs, label: t('myDocs'), right: String(DB.docs.length), value: '__all', on: curFolder === '__all' }];
+  if (DB.folders.length) items.push({ icon: I.folder, label: t('uncat'), right: String(cnt('')), value: '__none', on: curFolder === '' });
+  DB.folders.forEach((f) => items.push({ icon: I.folder, label: f, right: String(cnt(f)), value: 'f:' + f, on: curFolder === f }));
+  items.push({ icon: I.plus, label: t('newFolder'), value: '__new' });
+  if (DB.folders.length) items.push({ icon: I.edit, label: t('manageFolders'), value: '__manage' });
+  const v = await actionSheet(t('folder'), items);
+  if (v == null) return;
+  if (v === '__all') curFolder = '__all';
+  else if (v === '__none') curFolder = '';
+  else if (v.startsWith && v.startsWith('f:')) curFolder = v.slice(2);
+  else if (v === '__new') {
+    const n = await promptSheet(t('newFolder'), '', t('folderPh'));
+    if (!n) return;
+    if (DB.folders.includes(n)) return toast(t('folderExists'));
+    DB.folders.push(n);
+    await saveDB();
+    curFolder = n;
+  } else if (v === '__manage') return manageFolders();
+  renderHome();
 }
 
 function matchDoc(d, toks) {
@@ -388,42 +408,59 @@ function matchDoc(d, toks) {
 }
 
 function renderHome() {
-  renderChips();
+  if (curFolder !== '__all' && curFolder !== '' && !DB.folders.includes(curFolder)) curFolder = '__all';
   const toks = query.toLowerCase().split(/\s+/).filter(Boolean);
   const list = DB.docs
     .filter((d) => curFolder === '__all' || (d.folder || '') === curFolder)
     .map((d) => ({ d, m: matchDoc(d, toks) }))
     .filter((x) => x.m.ok)
     .sort((a, b) => b.d.updated - a.d.updated);
+  $('#home-title').textContent = `${folderTitle()} (${list.length})`;
   $('#doc-list').innerHTML = list.map(({ d, m }) => `
-    <button class="doc" data-id="${d.id}">
-      <div class="th">${d.thumb ? `<img loading="lazy" src="${store.url(`docs/${d.id}/${d.thumb}`)}" alt="" />` : ''}<span class="pg">${d.pages.length} 页</span></div>
+    <div class="doc" data-id="${d.id}">
+      <div class="th">${d.thumb ? `<img loading="lazy" src="${store.url(`docs/${d.id}/${d.thumb}`)}" alt="" />` : ''}</div>
       <div class="info">
         <div class="nm">${esc(d.name)}</div>
-        <div class="sub">${fmtDate(d.updated)}${curFolder === '__all' && d.folder ? `<span class="tag">${esc(d.folder)}</span>` : ''}</div>
+        <div class="sub">${fmtSize(d.size)}<span class="pc">${d.pages.length}</span>${curFolder === '__all' && d.folder ? `<span class="tag">${esc(d.folder)}</span>` : ''}</div>
+        <div class="sub">${fmtDate(d.updated)}</div>
         ${m.hit ? `<div class="hit">${m.hit}</div>` : ''}
       </div>
-    </button>`).join('');
-  $$('#doc-list .doc').forEach((b) => b.addEventListener('click', () => openDetail(b.dataset.id)));
+      <button class="icon-btn dots" aria-label="more"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+    </div>`).join('');
+  $$('#doc-list .doc').forEach((row) => {
+    row.addEventListener('click', () => openDetail(row.dataset.id));
+    $('.dots', row).addEventListener('click', (e) => {
+      e.stopPropagation();
+      const d = docById(row.dataset.id);
+      if (d) moreSheet(d, true);
+    });
+  });
   const empty = !list.length;
   $('#empty').hidden = !empty;
-  if (empty) {
-    $('#empty-text').innerHTML = query ? '找不到相关文件<br/>试试别的关键词' : DB.docs.length ? '这个文件夹还是空的' : '还没有文件<br/>点下面的按钮开始扫描';
-  }
+  if (empty) $('#empty-text').innerHTML = query ? t('emptySearch') : DB.docs.length ? t('emptyFolder') : t('emptyNone');
 }
 
+function openSearch(on) {
+  $('#home-bar').hidden = on;
+  $('#search-bar').hidden = !on;
+  if (on) setTimeout(() => $('#q').focus(), 50);
+  else { $('#q').value = ''; query = ''; renderHome(); }
+}
+$('#btn-search').addEventListener('click', () => openSearch(true));
+$('#search-close').addEventListener('click', () => openSearch(false));
+$('#btn-menu').addEventListener('click', folderMenu);
 $('#q').addEventListener('input', (e) => { query = e.target.value.trim(); renderHome(); });
 
 /* ---------- 文件夹管理 ---------- */
 async function manageFolders() {
-  const items = [{ icon: I.plus, label: '新建文件夹', value: '__new' }]
-    .concat(DB.folders.map((f) => ({ icon: I.folder, label: f, right: `${DB.docs.filter((d) => d.folder === f).length} 个`, value: f })));
-  const v = await actionSheet('文件夹', items, DB.folders.length ? '点文件夹可以改名或删除' : '');
+  const items = [{ icon: I.plus, label: t('newFolder'), value: '__new' }]
+    .concat(DB.folders.map((f) => ({ icon: I.folder, label: f, right: t('nItems', { n: DB.docs.filter((d) => d.folder === f).length }), value: f })));
+  const v = await actionSheet(t('folder'), items, DB.folders.length ? t('folderHint') : '');
   if (v == null) return;
   if (v === '__new') {
-    const n = await promptSheet('新建文件夹', '', '例如：发票、合同、客户A');
+    const n = await promptSheet(t('newFolder'), '', t('folderPh'));
     if (!n) return;
-    if (DB.folders.includes(n)) return toast('已经有这个文件夹了');
+    if (DB.folders.includes(n)) return toast(t('folderExists'));
     DB.folders.push(n);
     await saveDB();
     curFolder = n;
@@ -431,18 +468,18 @@ async function manageFolders() {
     return;
   }
   const act = await actionSheet(v, [
-    { icon: I.edit, label: '改名', value: 'rename' },
-    { icon: I.trash, label: '删除文件夹（文件移到未分类）', value: 'del', danger: true },
+    { icon: I.edit, label: t('rename'), value: 'rename' },
+    { icon: I.trash, label: t('delFolderOpt'), value: 'del', danger: true },
   ]);
   if (act === 'rename') {
-    const n = await promptSheet('文件夹改名', v);
+    const n = await promptSheet(t('renameFolder'), v);
     if (!n || n === v) return;
-    if (DB.folders.includes(n)) return toast('已经有这个文件夹了');
+    if (DB.folders.includes(n)) return toast(t('folderExists'));
     DB.folders = DB.folders.map((f) => (f === v ? n : f));
     DB.docs.forEach((d) => { if (d.folder === v) d.folder = n; });
     if (curFolder === v) curFolder = n;
   } else if (act === 'del') {
-    if (!(await confirmSheet(`删除文件夹「${v}」？`, '里面的文件不会删除，会移到“未分类”。', '删除', true))) return;
+    if (!(await confirmSheet(t('delFolderQ', { name: v }), t('delFolderD'), t('del'), true))) return;
     DB.folders = DB.folders.filter((f) => f !== v);
     DB.docs.forEach((d) => { if (d.folder === v) d.folder = ''; });
     if (curFolder === v) curFolder = '__all';
@@ -456,7 +493,7 @@ async function manageFolders() {
    ========================================================= */
 async function fetchUri(u) {
   const r = await fetch(C.convertFileSrc(u));
-  if (!r.ok) throw new Error('读取失败');
+  if (!r.ok) throw new Error(t('readFail'));
   return r.blob();
 }
 
@@ -464,15 +501,15 @@ async function ensureScannerModule() {
   let avail = true;
   try { avail = (await Scanner.isGoogleDocumentScannerModuleAvailable()).available; } catch (e) { return; }
   if (avail) return;
-  busy('第一次使用，正在下载扫描组件…');
+  busy(t('dlScanner'));
   let h;
   try {
     await new Promise((res, rej) => {
       const to = setTimeout(res, 90000); // 超时也试试直接扫描
       Scanner.addListener('googleDocumentScannerModuleInstallProgress', (e) => {
-        busy(`正在下载扫描组件 ${Math.round(e.progress || 0)}%`);
+        busy(t('dlScannerPct', { p: Math.round(e.progress || 0) }));
         if (e.state === 4) { clearTimeout(to); res(); }
-        if (e.state === 5 || e.state === 3) { clearTimeout(to); rej(new Error('扫描组件下载失败，请检查网络后再试')); }
+        if (e.state === 5 || e.state === 3) { clearTimeout(to); rej(new Error(t('dlScannerFail'))); }
       }).then((x) => { h = x; });
       Scanner.installGoogleDocumentScannerModule().catch((e) => { clearTimeout(to); rej(e); });
     });
@@ -485,7 +522,7 @@ async function ensureScannerModule() {
 /** 返回 Blob[]，取消返回 null */
 async function getScan() {
   if (!NATIVE) {
-    toast('浏览器预览不能用相机，改用选图片');
+    toast(t('noCamWeb'));
     return pickImages();
   }
   try {
@@ -493,7 +530,7 @@ async function getScan() {
     const r = await Scanner.scanDocument({ galleryImportAllowed: true, pageLimit: 50, resultFormats: 'JPEG', scannerMode: 'FULL' });
     const uris = (r && r.scannedImages) || [];
     if (!uris.length) return null;
-    busy('正在读取扫描结果…');
+    busy(t('readingScan'));
     const blobs = [];
     for (const u of uris) blobs.push(await fetchUri(u));
     busy(false);
@@ -502,7 +539,7 @@ async function getScan() {
     busy(false);
     const msg = (e && (e.message || e.code)) || String(e);
     if (/cancel/i.test(msg)) return null;
-    toast('扫描失败：' + msg, 4000);
+    toast(t('scanFail') + msg, 4000);
     return null;
   }
 }
@@ -561,16 +598,16 @@ function segInit(el, opts, cur, onPick) {
 }
 
 function openEditorView() {
-  $('#ed-title').textContent = ED.isNew ? '新文件' : '编辑页面';
+  $('#ed-title').textContent = ED.isNew ? t('newFile') : t('editPages');
   $('#ed-name').value = ED.name;
-  $('#ed-folder').innerHTML = ['<option value="">未分类</option>']
+  $('#ed-folder').innerHTML = [`<option value="">${t('uncat')}</option>`]
     .concat(DB.folders.map((f) => `<option value="${esc(f)}">${esc(f)}</option>`))
-    .concat('<option value="__new">＋ 新建文件夹…</option>').join('');
+    .concat(`<option value="__new">${t('newFolderOpt')}</option>`).join('');
   $('#ed-folder').value = ED.folder;
   const allSame = ED.pages.every((p) => p.filter === ED.pages[0].filter) ? ED.pages[0].filter : '';
-  segInit($('#ed-filter-all'), FILTERS.map((f) => [f.k, f.n]), allSame, (k) => { ED.pages.forEach((p) => (p.filter = k)); ED.dirty = true; renderPages(); });
-  segInit($('#ed-paper'), Object.entries(PAPER), ED.paper, (k) => { ED.paper = k; ED.dirty = true; });
-  segInit($('#ed-quality'), Object.entries(QUALITY).map(([k, v]) => [k, v.n]), ED.quality, (k) => { ED.quality = k; ED.dirty = true; });
+  segInit($('#ed-filter-all'), FILTERS.map((f) => [f.k, t(f.n)]), allSame, (k) => { ED.pages.forEach((p) => (p.filter = k)); ED.dirty = true; renderPages(); });
+  segInit($('#ed-paper'), Object.entries(PAPER).map(([k, v]) => [k, t(v)]), ED.paper, (k) => { ED.paper = k; ED.dirty = true; });
+  segInit($('#ed-quality'), Object.entries(QUALITY).map(([k, v]) => [k, t(v.n)]), ED.quality, (k) => { ED.quality = k; ED.dirty = true; });
   renderPages();
   show('editor');
   $('.ed-scroll').scrollTop = 0;
@@ -605,7 +642,7 @@ function renderPages() {
     },
   });
   syncFilterAllSeg();
-  $('#ed-save').textContent = `保存（${ED.pages.length} 页）`;
+  $('#ed-save').textContent = t('saveN', { n: ED.pages.length });
 }
 
 async function pageSheet(f) {
@@ -615,13 +652,13 @@ async function pageSheet(f) {
   const url = store.url(`docs/${ED.id}/${p.f}`);
   const n = ED.pages.length;
   const html = `
-    <h3>第 ${idx + 1} 页</h3>
-    <div class="filters">${FILTERS.map((fl) => `<button data-k="${fl.k}" class="${fl.k === p.filter ? 'on' : ''}"><img src="${url}" style="filter:${fl.css}" alt="" />${fl.n}</button>`).join('')}</div>
+    <h3>${t('pageN', { n: idx + 1 })}</h3>
+    <div class="filters">${FILTERS.map((fl) => `<button data-k="${fl.k}" class="${fl.k === p.filter ? 'on' : ''}"><img src="${url}" style="filter:${fl.css}" alt="" />${t(fl.n)}</button>`).join('')}</div>
     <div class="tools">
-      <button id="pt-left" ${idx === 0 ? 'disabled' : ''}>${I.left}前移</button>
-      <button id="pt-right" ${idx === n - 1 ? 'disabled' : ''}>${I.right}后移</button>
-      <button id="pt-rot">${I.rotate}旋转</button>
-      <button id="pt-del" class="danger">${I.trash}删除</button>
+      <button id="pt-left" ${idx === 0 ? 'disabled' : ''}>${I.left}${t('moveFwd')}</button>
+      <button id="pt-right" ${idx === n - 1 ? 'disabled' : ''}>${I.right}${t('moveBack')}</button>
+      <button id="pt-rot">${I.rotate}${t('rotate')}</button>
+      <button id="pt-del" class="danger">${I.trash}${t('del')}</button>
     </div>`;
   const act = await openSheet(html, (sh) => {
     $$('.filters button', sh).forEach((b) => b.addEventListener('click', () => closeSheet({ filter: b.dataset.k })));
@@ -637,7 +674,7 @@ async function pageSheet(f) {
     const j = idx + act.move;
     [ED.pages[idx], ED.pages[j]] = [ED.pages[j], ED.pages[idx]];
   } else if (act.rot) {
-    busy('旋转中…');
+    busy(t('rotating'));
     try {
       const bmp = await decode(await store.read(`docs/${ED.id}/${p.f}`));
       const out = await render(bmp, { max: STORE_MAX, rotate: 90, q: 0.92 });
@@ -646,10 +683,10 @@ async function pageSheet(f) {
       await store.write(`docs/${ED.id}/${nf}`, out.blob);
       if (!ED.keep.has(p.f)) store.del(`docs/${ED.id}/${p.f}`);
       p.f = nf;
-    } catch (e) { toast('旋转失败'); }
+    } catch (e) { toast(t('rotateFail')); }
     busy(false);
   } else if (act.del) {
-    if (ED.pages.length === 1) return toast('至少要保留一页');
+    if (ED.pages.length === 1) return toast(t('keepOne'));
     ED.pages.splice(idx, 1);
     if (!ED.keep.has(p.f)) store.del(`docs/${ED.id}/${p.f}`);
   }
@@ -673,7 +710,7 @@ async function cleanDir(id, keep) {
 }
 
 async function editorBack() {
-  if (ED.dirty && !(await confirmSheet(ED.isNew ? '放弃这个文件？' : '放弃修改？', ED.isNew ? '扫描的页面不会保存。' : '刚才的修改不会保存。', '放弃', true))) return;
+  if (ED.dirty && !(await confirmSheet(ED.isNew ? t('discardNewQ') : t('discardEditQ'), ED.isNew ? t('discardNewD') : t('discardEditD'), t('discard'), true))) return;
   const ed = ED;
   ED = null;
   if (ed.isNew) await store.rmdir('docs/' + ed.id);
@@ -684,21 +721,21 @@ async function editorBack() {
 
 async function saveEditor() {
   const name = $('#ed-name').value.trim() || defaultName();
-  if (!ED.pages.length) return toast('至少要一页');
+  if (!ED.pages.length) return toast(t('keepOne'));
   const id = ED.id;
   try {
     const bytes = await buildPdf(id, ED.pages, ED.paper, ED.quality, name);
     const old = docById(id);
     const pdf = safeName(name) + '.pdf';
     await store.write(`docs/${id}/${pdf}`, new Blob([bytes], { type: 'application/pdf' }));
-    busy('正在保存…');
+    busy(t('saving'));
     // 缩略图
     const first = ED.pages[0];
     const bmp = await decode(await store.read(`docs/${id}/${first.f}`));
-    const t = await render(bmp, { max: 420, filter: first.filter, q: 0.75 });
+    const th = await render(bmp, { max: 420, filter: first.filter, q: 0.75 });
     if (bmp.close) bmp.close();
     const thumb = 't_' + uid() + '.jpg';
-    await store.write(`docs/${id}/${thumb}`, t.blob);
+    await store.write(`docs/${id}/${thumb}`, th.blob);
 
     const now = Date.now();
     const pagesChanged = !old || old.pages.map((p) => p.f).join('|') !== ED.pages.map((p) => p.f).join('|');
@@ -717,12 +754,12 @@ async function saveEditor() {
     await cleanDir(id, new Set([...ED.pages.map((p) => p.f), pdf, thumb]));
     ED = null;
     busy(false);
-    toast('已保存');
+    toast(t('saved'));
     openDetail(id);
     runOcrQueue();
   } catch (e) {
     busy(false);
-    toast('保存失败：' + (e.message || e), 4000);
+    toast(t('saveFail') + (e.message || e), 4000);
   }
 }
 
@@ -731,7 +768,7 @@ $('#ed-save').addEventListener('click', saveEditor);
 $('#ed-name').addEventListener('input', (e) => { ED.name = e.target.value; ED.dirty = true; });
 $('#ed-folder').addEventListener('change', async (e) => {
   if (e.target.value === '__new') {
-    const n = await promptSheet('新建文件夹', '', '例如：发票、合同、客户A');
+    const n = await promptSheet(t('newFolder'), '', t('folderPh'));
     if (n && !DB.folders.includes(n)) { DB.folders.push(n); await saveDB(); }
     const keepName = $('#ed-name').value;
     ED.folder = n || ED.folder;
@@ -752,7 +789,7 @@ $('#ed-add-gallery').addEventListener('click', () => addMore('gallery'));
 let DT = null;
 
 function ocrLabel(d) {
-  return { pending: '文字识别中…', done: d.text && d.text.trim() ? '可搜索文字' : '没有识别到文字', error: '部分页面识别失败', na: '' }[d.ocr] || '';
+  return ({ pending: t('ocrPending'), done: d.text && d.text.trim() ? t('ocrDone') : t('ocrNone'), error: t('ocrErr'), na: '' })[d.ocr] || '';
 }
 
 function openDetail(id) {
@@ -760,7 +797,7 @@ function openDetail(id) {
   if (!d) { show('home'); renderHome(); return; }
   DT = id;
   $('#dt-title').textContent = d.name;
-  const meta = [`${d.pages.length} 页`, fmtSize(d.size), fmtDate(d.updated)];
+  const meta = [t('nPages', { n: d.pages.length }), fmtSize(d.size), fmtDate(d.updated)];
   if (d.folder) meta.push(d.folder);
   const ol = ocrLabel(d);
   if (ol) meta.push(ol);
@@ -788,9 +825,9 @@ async function sharePdf(d) {
   try {
     await store.clearShare();
     const uri = await store.copyToShare(`docs/${d.id}/${d.pdf}`, d.pdf);
-    await ShareP.share({ title: d.name, files: [uri], dialogTitle: '分享 PDF' });
+    await ShareP.share({ title: d.name, files: [uri], dialogTitle: t('sharePdf') });
   } catch (e) {
-    if (!/cancel/i.test(e.message || '')) toast('分享失败：' + (e.message || e), 4000);
+    if (!/cancel/i.test(e.message || '')) toast(t('shareFail') + (e.message || e), 4000);
   }
 }
 
@@ -800,7 +837,7 @@ async function shareImages(d) {
     const uris = [];
     const base = safeName(d.name);
     for (let i = 0; i < d.pages.length; i++) {
-      busy(`正在准备图片 ${i + 1} / ${d.pages.length}`);
+      busy(t('preparingImg', { i: i + 1, n: d.pages.length }));
       const p = d.pages[i];
       const bmp = await decode(await store.read(`docs/${d.id}/${p.f}`));
       const out = await render(bmp, { max: QUALITY.hd.max, filter: p.filter, q: 0.88 });
@@ -814,10 +851,10 @@ async function shareImages(d) {
       uris.push(await store.blobToShare(nm, out.blob));
     }
     busy(false);
-    if (NATIVE) await ShareP.share({ title: d.name, files: uris, dialogTitle: '分享图片' });
+    if (NATIVE) await ShareP.share({ title: d.name, files: uris, dialogTitle: t('shareImg') });
   } catch (e) {
     busy(false);
-    if (!/cancel/i.test(e.message || '')) toast('分享失败：' + (e.message || e), 4000);
+    if (!/cancel/i.test(e.message || '')) toast(t('shareFail') + (e.message || e), 4000);
   }
 }
 
@@ -834,21 +871,21 @@ async function copyText(t) {
 
 async function textSheet(d) {
   const state = d.ocr;
-  const desc = !NATIVE ? '浏览器预览没有文字识别，装到手机上才会识别。' :
-    state === 'pending' ? '正在识别，稍等一下再打开。' :
-      !(d.text || '').trim() ? '这份文件没有识别到文字。' : '可以长按选取部分文字，或者一键复制全部。';
+  const desc = !NATIVE ? t('txWeb') :
+    state === 'pending' ? t('txPending') :
+      !(d.text || '').trim() ? t('txNone') : t('txHint');
   const v = await openSheet(`
-    <h3>识别出的文字</h3><p class="desc">${esc(desc)}</p>
+    <h3>${t('txTitle')}</h3><p class="desc">${esc(desc)}</p>
     <textarea readonly id="tx">${esc(d.text || '')}</textarea>
-    <div class="btns"><button id="tx-re">重新识别</button><button class="primary" id="tx-copy">复制全部</button></div>`, (sh) => {
+    <div class="btns"><button id="tx-re">${t('reOcr')}</button><button class="primary" id="tx-copy">${t('copyAll')}</button></div>`, (sh) => {
     $('#tx-copy', sh).onclick = () => closeSheet('copy');
     $('#tx-re', sh).onclick = () => closeSheet('re');
   });
   if (v === 'copy') {
-    if (!(d.text || '').trim()) return toast('没有文字可以复制');
-    toast((await copyText(d.text)) ? '已复制' : '复制失败，请长按选取');
+    if (!(d.text || '').trim()) return toast(t('noTextCopy'));
+    toast((await copyText(d.text)) ? t('copied') : t('copyFail'));
   } else if (v === 're') {
-    if (!NATIVE) return toast('要在手机上才能识别');
+    if (!NATIVE) return toast(t('ocrPhoneOnly'));
     d.ocr = 'pending';
     await saveDB();
     openDetail(d.id);
@@ -856,64 +893,68 @@ async function textSheet(d) {
   }
 }
 
-async function moreSheet(d) {
+async function moreSheet(d, fromHome) {
+  const after = (id) => (fromHome ? renderHome() : openDetail(id));
   const v = await actionSheet(d.name, [
-    { icon: I.edit, label: '重命名', value: 'rename' },
-    { icon: I.folder, label: '移动到文件夹', right: d.folder || '未分类', value: 'move' },
-    { icon: I.dup, label: '复制一份', value: 'dup' },
-    { icon: I.trash, label: '删除', value: 'del', danger: true },
+    ...(fromHome ? [{ icon: I.share, label: t('sharePdf'), value: 'share' }, { icon: I.copy, label: t('shareImg'), value: 'shareimg' }] : []),
+    { icon: I.edit, label: t('rename'), value: 'rename' },
+    { icon: I.folder, label: t('moveTo'), right: d.folder || t('uncat'), value: 'move' },
+    { icon: I.dup, label: t('duplicate'), value: 'dup' },
+    { icon: I.trash, label: t('del'), value: 'del', danger: true },
   ]);
+  if (v === 'share') return sharePdf(d);
+  if (v === 'shareimg') return shareImages(d);
   if (v === 'rename') {
-    const n = await promptSheet('重命名', d.name);
+    const n = await promptSheet(t('rename'), d.name);
     if (!n || n === d.name) return;
     const pdf = safeName(n) + '.pdf';
     if (pdf !== d.pdf) {
-      try { await store.move(`docs/${d.id}/${d.pdf}`, `docs/${d.id}/${pdf}`); d.pdf = pdf; } catch (e) { toast('改名失败'); return; }
+      try { await store.move(`docs/${d.id}/${d.pdf}`, `docs/${d.id}/${pdf}`); d.pdf = pdf; } catch (e) { toast(t('renameFail')); return; }
     }
     d.name = n;
     d.updated = Date.now();
     await saveDB();
-    openDetail(d.id);
+    after(d.id);
   } else if (v === 'move') {
-    const opts = [{ label: '未分类', value: '__none', on: !d.folder, right: !d.folder ? '当前' : null }]
-      .concat(DB.folders.map((f) => ({ icon: I.folder, label: f, value: f, on: d.folder === f, right: d.folder === f ? '当前' : null })))
-      .concat({ icon: I.plus, label: '新建文件夹…', value: '__new' });
-    let f = await actionSheet('移动到', opts);
+    const opts = [{ label: t('uncat'), value: '__none', on: !d.folder, right: !d.folder ? t('current') : null }]
+      .concat(DB.folders.map((f) => ({ icon: I.folder, label: f, value: f, on: d.folder === f, right: d.folder === f ? t('current') : null })))
+      .concat({ icon: I.plus, label: t('newFolderOpt'), value: '__new' });
+    let f = await actionSheet(t('moveTitle'), opts);
     if (f == null) return;
     if (f === '__new') {
-      f = await promptSheet('新建文件夹', '', '例如：发票、合同、客户A');
+      f = await promptSheet(t('newFolder'), '', t('folderPh'));
       if (!f) return;
       if (!DB.folders.includes(f)) DB.folders.push(f);
     }
     d.folder = f === '__none' ? '' : f;
     await saveDB();
-    toast(d.folder ? `已移到「${d.folder}」` : '已移到未分类');
-    openDetail(d.id);
+    toast(d.folder ? t('movedTo', { name: d.folder }) : t('movedUncat'));
+    after(d.id);
   } else if (v === 'dup') {
-    busy('复制中…');
+    busy(t('duplicating'));
     try {
       const nid = uid();
       for (const f of [...d.pages.map((p) => p.f), d.pdf, d.thumb]) {
         await store.write(`docs/${nid}/${f}`, await store.read(`docs/${d.id}/${f}`));
       }
       const nd = JSON.parse(JSON.stringify(d));
-      Object.assign(nd, { id: nid, name: d.name + ' 副本', created: Date.now(), updated: Date.now() });
+      Object.assign(nd, { id: nid, name: d.name + ' ' + t('copySuffix'), created: Date.now(), updated: Date.now() });
       const npdf = safeName(nd.name) + '.pdf';
       await store.move(`docs/${nid}/${d.pdf}`, `docs/${nid}/${npdf}`);
       nd.pdf = npdf;
       DB.docs.push(nd);
       await saveDB();
       busy(false);
-      toast('已复制');
-      openDetail(nid);
-    } catch (e) { busy(false); toast('复制失败'); }
+      toast(t('dupDone'));
+      after(nid);
+    } catch (e) { busy(false); toast(t('dupFail')); }
   } else if (v === 'del') {
-    if (!(await confirmSheet(`删除「${d.name}」？`, '删除后无法恢复。', '删除', true))) return;
+    if (!(await confirmSheet(t('delQ', { name: d.name }), t('delD'), t('del'), true))) return;
     DB.docs = DB.docs.filter((x) => x.id !== d.id);
     await saveDB();
     await store.rmdir('docs/' + d.id);
-    toast('已删除');
-    detailBack();
+    toast(t('deleted'));
+    if (fromHome) renderHome(); else detailBack();
   }
 }
 
@@ -955,7 +996,7 @@ async function runOcrQueue(force) {
       await saveDB();
       if (VIEW === 'detail' && DT === cur.id) {
         openDetail(cur.id);
-        if (force) toast(cur.text ? '文字识别完成' : '没有识别到文字');
+        if (force) toast(cur.text ? t('ocrDoneToast') : t('ocrNone'));
       }
       if (VIEW === 'home' && query) renderHome();
     }
@@ -970,27 +1011,45 @@ async function runOcrQueue(force) {
 async function settingsSheet() {
   const s = DB.settings;
   const total = DB.docs.reduce((a, d) => a + (d.size || 0), 0);
-  const v = await actionSheet('设置', [
-    { label: '默认画质', right: QUALITY[s.quality].n, value: 'q' },
-    { label: '默认纸张', right: PAPER[s.paper], value: 'p' },
-    { label: '文件名开头', right: s.prefix, value: 'n' },
-    { label: '管理文件夹', right: `${DB.folders.length} 个`, value: 'f' },
-    { label: '关于 YourScan', value: 'about' },
-  ], `共 ${DB.docs.length} 份文件 · PDF 约 ${fmtSize(total)} · 文件只保存在这部手机里`);
-  if (v === 'q') {
-    const k = await actionSheet('默认画质', Object.entries(QUALITY).map(([k, q]) => ({ label: q.n, value: k, on: k === s.quality, right: k === s.quality ? '当前' : { hd: '最清楚，文件大', std: '推荐', small: '适合 WhatsApp' }[k] })));
-    if (k) { s.quality = k; await saveDB(); toast('已设为' + QUALITY[k].n); }
+  const langName = s.lang && s.lang !== 'auto' ? LANGS[s.lang] : t('langAuto');
+  const v = await actionSheet(t('settings'), [
+    { icon: I.globe, label: t('language'), right: langName, value: 'lang' },
+    { label: t('defQuality'), right: t(QUALITY[s.quality].n), value: 'q' },
+    { label: t('defPaper'), right: t(PAPER[s.paper]), value: 'p' },
+    { label: t('prefix'), right: (s.prefix || '').trim() || t('defaultPrefix'), value: 'n' },
+    { label: t('manageFolders'), right: String(DB.folders.length), value: 'f' },
+    { label: t('about'), value: 'about' },
+  ], t('setSummary', { n: DB.docs.length, size: fmtSize(total) }));
+  if (v === 'lang') {
+    const cur = s.lang || 'auto';
+    const k = await actionSheet(t('language'), [['auto', t('langAuto')], ...Object.entries(LANGS)].map(([k, n]) => ({ label: n, value: k, on: k === cur, right: k === cur ? '✓' : null })));
+    if (!k) return;
+    s.lang = k;
+    await saveDB();
+    applyLang();
+  } else if (v === 'q') {
+    const D = { hd: 'qHdD', std: 'qStdD', small: 'qSmallD' };
+    const k = await actionSheet(t('defQuality'), Object.entries(QUALITY).map(([k, q]) => ({ label: t(q.n), value: k, on: k === s.quality, right: k === s.quality ? t('current') : t(D[k]) })));
+    if (k) { s.quality = k; await saveDB(); toast(t('setTo', { name: t(QUALITY[k].n) })); }
   } else if (v === 'p') {
-    const k = await actionSheet('默认纸张', Object.entries(PAPER).map(([k, n]) => ({ label: n, value: k, on: k === s.paper, right: k === s.paper ? '当前' : k === 'a4' ? '每页统一 A4，适合打印' : '保持图片原本比例' })));
+    const k = await actionSheet(t('defPaper'), Object.entries(PAPER).map(([k, n]) => ({ label: t(n), value: k, on: k === s.paper, right: k === s.paper ? t('current') : t(n + 'D') })));
     if (k) { s.paper = k; await saveDB(); }
   } else if (v === 'n') {
-    const n = await promptSheet('文件名开头', s.prefix, '例如：扫描、公司名');
-    if (n) { s.prefix = n; await saveDB(); toast('新文件会叫 ' + defaultName()); }
+    const n = await promptSheet(t('prefix'), (s.prefix || '').trim() || t('defaultPrefix'), t('prefixPh'));
+    if (n) { s.prefix = n; await saveDB(); toast(t('newNameToast', { name: defaultName() })); }
   } else if (v === 'f') {
     manageFolders();
   } else if (v === 'about') {
-    await actionSheet('YourScan', [{ label: '知道了', value: 'ok' }], '给办公室同事用的文件扫描工具。无广告，扫描和文字识别都在手机里离线完成，文件不会上传到任何地方。');
+    await actionSheet('YourScan', [{ label: t('gotIt'), value: 'ok' }], t('aboutText'));
   }
+}
+
+/** 切换语言后刷新所有文字 */
+function applyLang() {
+  setLang(DB.settings.lang === 'auto' ? null : DB.settings.lang);
+  if (VIEW === 'home') renderHome();
+  else if (VIEW === 'detail' && DT) openDetail(DT);
+  else if (VIEW === 'editor' && ED) { const nm = $('#ed-name').value; openEditorView(); $('#ed-name').value = nm; }
 }
 $('#btn-settings').addEventListener('click', settingsSheet);
 
@@ -1012,7 +1071,7 @@ async function checkShareIntent() {
   const items = [r, ...(r.additionalItems || [])].filter((x) => x && x.url && (!x.type || /image/i.test(x.type)));
   if (!items.length) return;
   SHARE_MODE = true;
-  busy('正在读取图片…');
+  busy(t('readingImgs'));
   const blobs = [];
   for (const it of items) {
     const u = decodeURIComponent(it.url);
@@ -1020,7 +1079,7 @@ async function checkShareIntent() {
     try { await FS.deleteFile({ path: u }); } catch (e) {}
   }
   busy(false);
-  if (!blobs.length) { toast('读取图片失败'); return finishShare(); }
+  if (!blobs.length) { toast(t('readImgsFail')); return finishShare(); }
   await newDocFrom(blobs);
 }
 
@@ -1031,7 +1090,7 @@ if (AppP) {
     if (VIEW === 'editor') return editorBack();
     if (VIEW === 'detail') return detailBack();
     if (SHARE_MODE) return finishShare();
-    if (query) { $('#q').value = ''; query = ''; return renderHome(); }
+    if (!$('#search-bar').hidden) return openSearch(false);
     if (curFolder !== '__all') { curFolder = '__all'; return renderHome(); }
     (AppP.minimizeApp ? AppP.minimizeApp() : AppP.exitApp()).catch(() => AppP.exitApp());
   });
@@ -1039,13 +1098,15 @@ if (AppP) {
 }
 
 (async function boot() {
+  setLang(null);
   try {
     await store.init();
     await loadDB();
   } catch (e) {
-    toast('读取文件列表失败：' + (e.message || e), 5000);
+    setLang(null);
+    toast(t('loadFail') + (e.message || e), 5000);
   }
-  renderHome();
+  applyLang();
   await checkShareIntent();
   runOcrQueue();
 })();

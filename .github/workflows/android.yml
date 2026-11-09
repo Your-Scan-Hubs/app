@@ -36,6 +36,10 @@ jobs:
           sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
           grep -E "versionCode|versionName" android/app/build.gradle
 
+          # 夜间模式：让网页能跟随手机深色模式
+          sed -i 's/Theme.AppCompat.Light.DarkActionBar/Theme.AppCompat.DayNight.DarkActionBar/; s/Theme.AppCompat.Light.NoActionBar/Theme.AppCompat.DayNight.NoActionBar/' android/app/src/main/res/values/styles.xml
+          cat android/app/src/main/res/values/styles.xml
+
           # 2) 离线文字识别（ML Kit 中文模型，同时认英文/马来文）
           cat >> android/app/build.gradle <<'GRADLE'
 
