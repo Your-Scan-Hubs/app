@@ -1,0 +1,16 @@
+{
+  "name": "yourscan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "YourScan — 办公室文件扫描 app（Android）",
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "@capacitor-mlkit/document-scanner": "^7.5.0",
+    "send-intent": "^7.0.0"
+  }
+}

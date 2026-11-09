@@ -1,0 +1,108 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Create Android project
+        run: |
+          npx cap add android
+
+          # 1) 版本号：每次打包自动 +1，同事可以直接覆盖安装更新
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+
+          # 2) 离线文字识别（ML Kit 中文模型，同时认英文/马来文）
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          dependencies {
+              implementation 'com.google.android.gms:play-services-mlkit-text-recognition-chinese:16.0.1'
+          }
+          GRADLE
+
+          # 3) 原生代码：OCR 插件 + MainActivity
+          JAVA_DIR=android/app/src/main/java/com/yourscanhubs/app
+          cp native/android/OcrPlugin.java native/android/MainActivity.java $JAVA_DIR/
+
+          # 4) 让 YourScan 出现在“分享”菜单里（接收一张或多张图片）
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          act = '''
+                  <activity
+                      android:name="de.mindlib.sendIntent.SendIntentActivity"
+                      android:label="@string/app_name"
+                      android:exported="true"
+                      android:theme="@style/AppTheme.NoActionBar">
+                      <intent-filter>
+                          <action android:name="android.intent.action.SEND" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <data android:mimeType="image/*" />
+                      </intent-filter>
+                      <intent-filter>
+                          <action android:name="android.intent.action.SEND_MULTIPLE" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <data android:mimeType="image/*" />
+                      </intent-filter>
+                  </activity>
+          '''
+          meta = '''
+                  <meta-data
+                      android:name="com.google.mlkit.vision.DEPENDENCIES"
+                      android:value="ocr_chinese" />
+          '''
+          assert s.count('</application>') == 1
+          if 'SendIntentActivity' not in s:
+              s = s.replace('</application>', act + meta + '    </application>')
+          open(p, 'w').write(s)
+          print(s)
+          PY
+
+          npx cap sync android
+
+      - name: Build APK
+        run: |
+          # 固定签名：每次打包签名一致，更新时不用卸载（不会丢失手机里的扫描文件）
+          mkdir -p ~/.android
+          cp native/android/debug.keystore ~/.android/debug.keystore
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YourScan-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk YourScan.apk
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --title "YourScan Android 最新版" --notes "每次更新后自动替换。手机上直接下载 YourScan.apk 安装即可（覆盖安装，不会丢失文件）。" --prerelease
+          gh release upload android-latest YourScan.apk --clobber
+          gh release edit android-latest --notes "版本 1.0.${{ github.run_number }}。手机上直接下载 YourScan.apk 安装即可（覆盖安装，不会丢失文件）。"
