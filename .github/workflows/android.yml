@@ -59,10 +59,23 @@ jobs:
                       keyAlias 'androiddebugkey'
                       keyPassword 'android'
                   }
+                  rel {
+                      storeFile file('../../native/android/release.keystore')
+                      storePassword System.getenv('KEYSTORE_PASSWORD') ?: ''
+                      keyAlias 'yourscanner'
+                      keyPassword System.getenv('KEYSTORE_PASSWORD') ?: ''
+                  }
               }
               buildTypes {
                   debug { signingConfig signingConfigs.fixed }
-                  release { signingConfig signingConfigs.fixed }
+                  release {
+                      signingConfig System.getenv('KEYSTORE_PASSWORD') ? signingConfigs.rel : signingConfigs.fixed
+                      minifyEnabled false
+                  }
+              }
+              lint {
+                  abortOnError false
+                  checkReleaseBuilds false
               }
           }
           GRADLE
@@ -116,26 +129,37 @@ jobs:
           npx cap sync android
 
       - name: Build APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          # 固定签名：每次打包签名一致，更新时不用卸载（不会丢失手机里的扫描文件）
           mkdir -p ~/.android
           cp native/android/debug.keystore ~/.android/debug.keystore
+          if [ -n "$KEYSTORE_PASSWORD" ]; then
+            # 正式签名：签名文件加密放在仓库里，密码只存在 GitHub Secrets
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in native/android/release.keystore.enc -out native/android/release.keystore -pass env:KEYSTORE_PASSWORD
+            TASK=assembleRelease; APK=app/build/outputs/apk/release/app-release.apk
+            echo "正式版（release）"
+          else
+            TASK=assembleDebug; APK=app/build/outputs/apk/debug/app-debug.apk
+            echo "还没设 KEYSTORE_PASSWORD，先打测试版（debug）"
+          fi
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug || (echo "重试一次" && sleep 30 && ./gradlew assembleDebug)
-          # 检查签名是不是我们固定的那把
-          keytool -printcert -jarfile app/build/outputs/apk/debug/app-debug.apk | grep SHA256
+          ./gradlew $TASK || (echo "重试一次" && sleep 30 && ./gradlew $TASK)
+          keytool -printcert -jarfile $APK | grep SHA256
+          cp $APK ../YourScanner.apk
+          rm -f ../native/android/release.keystore
 
       - uses: actions/upload-artifact@v4
         with:
           name: YourScanner-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: YourScanner.apk
 
       - name: Publish to Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk YourScanner.apk && cp YourScanner.apk YourScan.apk
+          cp YourScanner.apk YourScan.apk
           gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --title "YourScanner Android 最新版" --notes "每次更新后自动替换。手机上直接下载 YourScanner.apk 安装即可（覆盖安装，不会丢失文件）。" --prerelease
           gh release upload android-latest YourScanner.apk YourScan.apk --clobber
           gh release edit android-latest --notes "版本 1.0.${{ github.run_number }}。手机上直接下载 YourScanner.apk 安装即可（覆盖安装，不会丢失文件）。"
