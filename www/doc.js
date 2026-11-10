@@ -231,19 +231,125 @@ async function importPdfFile() {
 /* ---------- 批量导入对话框（选好相册图片后） ---------- */
 function batchDialog(n) {
   let filter = 'none';
+  let crop = false; // 自动裁边：默认关闭
   return openSheet(`
     <h3>${esc(t('batchTitle', { n }))}</h3>
     <p class="desc">${esc(t('batchHint'))}</p>
     <div class="opt-label">${esc(t('filter'))}</div>
     <div class="seg" id="bd-f">${FILTERS.map((f) => `<button data-k="${f.k}" class="${f.k === filter ? 'on' : ''}">${esc(t(f.n))}</button>`).join('')}</div>
+    <button class="switch-row" id="bd-crop" aria-pressed="false">
+      ${I.crop}<span class="sw-text"><b>${esc(t('autoCrop'))}</b><small>${esc(t('autoCropHint'))}</small></span><span class="sw"><i></i></span>
+    </button>
     <div class="btns"><button id="bd-no">${esc(t('cancel'))}</button><button class="primary" id="bd-ok">${esc(t('ok'))}</button></div>`, (sh) => {
     $$('#bd-f button', sh).forEach((b) => b.addEventListener('click', () => {
       filter = b.dataset.k;
       $$('#bd-f button', sh).forEach((x) => x.classList.toggle('on', x === b));
     }));
-    $('#bd-ok', sh).onclick = () => closeSheet({ filter });
+    const sw = $('#bd-crop', sh);
+    sw.onclick = () => { crop = !crop; sw.setAttribute('aria-pressed', String(crop)); sw.classList.toggle('on', crop); };
+    $('#bd-ok', sh).onclick = () => closeSheet({ filter, crop });
     $('#bd-no', sh).onclick = () => closeSheet(null);
   });
+}
+
+/* ---------- 自动裁边：在缩略图上找出纸张 / 卡片的四个角 ---------- */
+function otsu(gray) {
+  const hist = new Array(256).fill(0);
+  for (const v of gray) hist[v]++;
+  const total = gray.length;
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0, wB = 0, best = 0, th = 127;
+  for (let i = 0; i < 256; i++) {
+    wB += hist[i];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += i * hist[i];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > best) { best = between; th = i; }
+  }
+  return th;
+}
+const polyArea = (q) => Math.abs(q.reduce((a, p, i) => { const n = q[(i + 1) % q.length]; return a + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
+
+/** 返回归一化的四角 [[x,y]…]（左上、右上、右下、左下），找不到返回 null */
+async function detectQuad(blob) {
+  const bmp = await decode(blob);
+  const cv = toCanvas(bmp, { max: 320 });
+  freeBmp(bmp);
+  const W = cv.width, H = cv.height;
+  const ctx = cv.getContext('2d');
+  // 先模糊一下，去掉文字细节
+  ctx.filter = 'blur(2px)';
+  ctx.drawImage(cv, 0, 0);
+  const px = ctx.getImageData(0, 0, W, H).data;
+  freeCv(cv);
+  const N = W * H;
+  const gray = new Uint8Array(N);
+  for (let i = 0; i < N; i++) gray[i] = (px[i * 4] * 299 + px[i * 4 + 1] * 587 + px[i * 4 + 2] * 114) / 1000;
+  const th = otsu(gray);
+  let best = null;
+  for (const bright of [true, false]) {
+    const mask = new Uint8Array(N);
+    for (let i = 0; i < N; i++) mask[i] = (gray[i] > th) === bright ? 1 : 0;
+    // 找最大的连通区域
+    const seen = new Uint8Array(N);
+    const stack = new Int32Array(N);
+    for (let s = 0; s < N; s++) {
+      if (!mask[s] || seen[s]) continue;
+      let sp = 0, cnt = 0;
+      stack[sp++] = s; seen[s] = 1;
+      let tl = s, tr = s, br = s, bl = s;
+      let vtl = Infinity, vtr = -Infinity, vbr = -Infinity, vbl = Infinity;
+      while (sp) {
+        const i = stack[--sp];
+        cnt++;
+        const x = i % W, y = (i / W) | 0;
+        if (x + y < vtl) { vtl = x + y; tl = i; }
+        if (x + y > vbr) { vbr = x + y; br = i; }
+        if (x - y > vtr) { vtr = x - y; tr = i; }
+        if (x - y < vbl) { vbl = x - y; bl = i; }
+        if (x > 0 && mask[i - 1] && !seen[i - 1]) { seen[i - 1] = 1; stack[sp++] = i - 1; }
+        if (x < W - 1 && mask[i + 1] && !seen[i + 1]) { seen[i + 1] = 1; stack[sp++] = i + 1; }
+        if (y > 0 && mask[i - W] && !seen[i - W]) { seen[i - W] = 1; stack[sp++] = i - W; }
+        if (y < H - 1 && mask[i + W] && !seen[i + W]) { seen[i + W] = 1; stack[sp++] = i + W; }
+      }
+      if (cnt < N * 0.12) continue;
+      const q = [tl, tr, br, bl].map((i) => [(i % W) / (W - 1), ((i / W) | 0) / (H - 1)]);
+      const qa = polyArea(q.map(([x, y]) => [x * W, y * H]));
+      const fill = cnt / Math.max(1, qa);   // 区域像不像一个四边形
+      const frac = qa / N;                   // 占画面多少
+      if (fill < 0.72 || frac < 0.12 || frac > 0.97) continue;
+      const score = frac * fill;
+      if (!best || score > best.score) best = { q, score };
+    }
+  }
+  if (!best || isFullQuad(best.q)) return null;
+  // 往外放一点点，避免切到边
+  const cx = best.q.reduce((a, p) => a + p[0], 0) / 4, cy = best.q.reduce((a, p) => a + p[1], 0) / 4;
+  return best.q.map(([x, y]) => [Math.max(0, Math.min(1, x + (x - cx) * 0.012)), Math.max(0, Math.min(1, y + (y - cy) * 0.012))]);
+}
+
+/** 对一批页面做自动裁边（只调四角，原图保留，之后还能手动改） */
+async function applyAutoCrop(docId, pages) {
+  const d = docById(docId) || { id: docId };
+  let done = 0;
+  for (let i = 0; i < pages.length; i++) {
+    busy(t('autoCropping', { i: i + 1, n: pages.length }));
+    const p = pages[i];
+    try {
+      const q = await detectQuad(await store.read(pagePath(d, p.t)));
+      if (!q) continue;
+      p.quad = q;
+      await processPage(d, p);
+      done++;
+    } catch (e) {}
+  }
+  busy(false);
+  if (!done) toast(t('autoCropNone'), 3000);
+  else if (done < pages.length) toast(t('autoCropSome', { n: done, total: pages.length }), 3000);
 }
 
 /**
@@ -279,6 +385,7 @@ async function askFilterFor(docId, pages, isNewDoc) {
     return false;
   }
   pages.forEach((p) => { p.filter = r.filter; });
+  if (r.crop) await applyAutoCrop(docId, pages);
   return true;
 }
 
@@ -312,11 +419,12 @@ async function createDoc(id, pages, name) {
 async function newDocFrom(src, { ask = false, name = null } = {}) {
   if (!src || !src.length) return null;
   const items = src.map((x) => (x instanceof Blob ? { blob: x, name: x.name } : x));
-  let filter = 'none';
+  let filter = 'none', crop = false;
   if (ask) {
     const r = await batchDialog(items.length);
     if (!r) { if (SHARE_MODE) finishShare(); return null; }
     filter = r.filter;
+    crop = r.crop;
   }
   if (!name) {
     const first = items.find((it) => it.name && !isImage(it.blob, it.name));
@@ -325,6 +433,7 @@ async function newDocFrom(src, { ask = false, name = null } = {}) {
   const id = uid();
   const pages = await buildPages(id, items, filter);
   if (!pages.length) { await store.rmdir('docs/' + id); if (SHARE_MODE) setTimeout(finishShare, 3500); return null; }
+  if (crop) await applyAutoCrop(id, pages);
   return createDoc(id, pages, name);
 }
 
@@ -343,6 +452,7 @@ async function addPages(kind) {
       const r = await batchDialog(got.blobs.length);
       if (!r) return;
       pages = await buildPages(d.id, got.blobs.map((b) => ({ blob: b, name: b.name })), r.filter);
+      if (r.crop) await applyAutoCrop(d.id, pages);
     } else {
       if (!(await askFilterFor(d.id, got.pages, false))) return;
       pages = got.pages;

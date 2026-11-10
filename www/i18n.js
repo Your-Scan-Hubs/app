@@ -5,6 +5,11 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    autoCrop: "自动裁边",
+    autoCropHint: "自动找出纸张或卡片的四个角并拉正",
+    autoCropping: "正在自动裁边 {i} / {n}",
+    autoCropNone: "没有找到明显的边，保持原图（可以进单页手动裁边）",
+    autoCropSome: "{n} / {total} 页已自动裁边，其余保持原图",
     selectFiles: "选择文件",
     sortBy: "排序方式",
     sortNew: "最新在前",
@@ -172,6 +177,12 @@ const STR = {
   },
 
   en: {
+    batchTitle1: "Process 1 image",
+    autoCrop: "Auto crop",
+    autoCropHint: "Find the paper or card edges and straighten them",
+    autoCropping: "Auto cropping {i} / {n}",
+    autoCropNone: "No clear edges found, kept the original (you can crop manually on the page)",
+    autoCropSome: "Auto cropped {n} of {total} pages, the rest kept as is",
     selectFiles: "Select files",
     sortBy: "Sort by",
     sortNew: "Newest first",
@@ -339,6 +350,11 @@ const STR = {
   },
 
   ms: {
+    autoCrop: "Potong automatik",
+    autoCropHint: "Cari tepi kertas atau kad dan luruskan",
+    autoCropping: "Memotong automatik {i} / {n}",
+    autoCropNone: "Tiada tepi jelas dijumpai, imej asal dikekalkan (boleh potong sendiri di halaman)",
+    autoCropSome: "{n} daripada {total} halaman dipotong automatik, selebihnya dikekalkan",
     selectFiles: "Pilih fail",
     sortBy: "Susun ikut",
     sortNew: "Terbaru dahulu",
