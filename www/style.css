@@ -312,6 +312,7 @@ html.dark .sw { background: #48484A; }
 .about { text-align: center; padding: 6px 4px 0; }
 .about img { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
 .about h3 { margin: 12px 0 2px !important; font-size: 20px !important; }
+.about .up-msg { color: var(--accent); font-weight: 600; min-height: 20px; margin-top: 4px; }
 .about .ver { color: var(--ink3); font-size: 13px; }
 .about p { color: var(--ink2); font-size: 14px; line-height: 1.6; margin: 12px 6px 0; }
 .about-logo { text-align: center; margin: 4px 0 6px; }

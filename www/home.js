@@ -35,6 +35,7 @@ function openDrawer() {
   h += row('backup', I.backup, t('backupRestore'));
   h += row('__trash', I.trash, `${t('trash')} (${trashed().length})`, null, curFolder === '__trash');
   h += '<div class="dr-sep"></div>';
+  h += row('update', I.download, t('checkUpdate'));
   h += row('help', I.help, t('help'));
   h += row('about', I.info, t('about'));
   $('#drawer').innerHTML = h;
@@ -50,6 +51,7 @@ async function drawerPick(k) {
   if (k === 'settings') return settingsSheet();
   if (k === 'managefolders') return manageFolders();
   if (k === 'backup') return backupSheet();
+  if (k === 'update') return updateSheet();
   if (k === 'importpdf') return importPdfFile();
   if (k === 'help') return actionSheet(t('help'), [{ label: t('gotIt'), value: 'ok' }], '', t('helpHtml'));
   if (k === 'about') return aboutSheet();
@@ -682,5 +684,38 @@ function aboutSheet() {
     </div>
     <div class="btns"><button class="primary" id="ab-ok">${esc(t('gotIt'))}</button></div>`, (sh) => {
     $('#ab-ok', sh).onclick = () => closeSheet(true);
+  });
+}
+
+/* ---------- 检查更新：对比网上最新版本，一键下载 ---------- */
+const UPDATE_URL = 'https://github.com/Your-Scan-Hubs/app/releases/download/android-latest/YourScanner.apk';
+const RELEASE_API = 'https://api.github.com/repos/Your-Scan-Hubs/app/releases/tags/android-latest';
+const verNum = (v) => { const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/); return m ? +m[1] * 1e6 + +m[2] * 1e3 + +m[3] : 0; };
+
+function openExternal(url) {
+  // 手机上：Capacitor 遇到外部网址会交给手机浏览器打开；浏览器预览就开新分页
+  if (NATIVE) window.location.href = url;
+  else window.open(url, '_blank');
+}
+
+function updateSheet() {
+  const cur = APP_VER || '1.0';
+  openSheet(`
+    <div class="about">
+      <img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" />
+      <h3>${esc(t('checkUpdate'))}</h3>
+      <p>${esc(t('curVer'))}: <b>${esc(cur)}</b><br/>${esc(t('latestVer'))}: <b id="up-latest">${esc(t('checking'))}</b></p>
+      <p class="up-msg" id="up-msg"></p>
+    </div>
+    <div class="btns"><button id="up-no">${esc(t('cancel'))}</button><button class="primary" id="up-go">${esc(t('downloadLatest'))}</button></div>`, (sh) => {
+    $('#up-no', sh).onclick = () => closeSheet(null);
+    $('#up-go', sh).onclick = () => { closeSheet(true); openExternal(UPDATE_URL); toast(t('updateHint'), 5000); };
+    fetch(RELEASE_API, { cache: 'no-store' }).then((r) => r.json()).then((j) => {
+      const m = String((j && (j.body || j.name)) || '').match(/\d+\.\d+\.\d+/);
+      const latest = m ? m[0] : '';
+      if (!$('#up-latest', sh)) return;
+      $('#up-latest', sh).textContent = latest || '—';
+      $('#up-msg', sh).textContent = !latest ? '' : verNum(latest) > verNum(cur) ? t('updateAvail') : t('upToDate');
+    }).catch(() => { if ($('#up-latest', sh)) { $('#up-latest', sh).textContent = '—'; $('#up-msg', sh).textContent = t('noNetwork'); } });
   });
 }

@@ -5,6 +5,15 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    checkUpdate: "检查更新",
+    curVer: "手机上的版本",
+    latestVer: "最新版本",
+    checking: "检查中…",
+    downloadLatest: "下载最新版",
+    updateAvail: "有新版本，可以更新",
+    upToDate: "已经是最新版本",
+    noNetwork: "连不上网络，查不到最新版本",
+    updateHint: "下载完后点通知栏里的文件安装（覆盖安装，文件不会丢）",
     officeTitle: "这个文件要先转成 PDF",
     officeSteps: "<li>点 <b>用 WPS 打开</b>（或其他 Office app）</li><li>在 WPS 里点 <b>分享 → 以 PDF 分享</b></li><li>选 <b>YourScanner</b>，排版会跟原档完全一样</li>",
     officeOpen: "用 WPS 打开",
@@ -191,6 +200,15 @@ const STR = {
   },
 
   en: {
+    checkUpdate: "Check for updates",
+    curVer: "Installed version",
+    latestVer: "Latest version",
+    checking: "Checking…",
+    downloadLatest: "Download latest",
+    updateAvail: "A new version is available",
+    upToDate: "You're up to date",
+    noNetwork: "Can't reach the internet to check",
+    updateHint: "When the download finishes, tap it in the notifications to install (your files are kept)",
     officeTitle: "Convert this file to PDF first",
     officeSteps: "<li>Tap <b>Open in WPS</b> (or another Office app)</li><li>In WPS, tap <b>Share → Share as PDF</b></li><li>Choose <b>YourScanner</b>. The layout stays exactly the same</li>",
     officeOpen: "Open in WPS",
@@ -378,6 +396,15 @@ const STR = {
   },
 
   ms: {
+    checkUpdate: "Semak kemas kini",
+    curVer: "Versi dipasang",
+    latestVer: "Versi terkini",
+    checking: "Menyemak…",
+    downloadLatest: "Muat turun terkini",
+    updateAvail: "Versi baharu tersedia",
+    upToDate: "Anda sudah guna versi terkini",
+    noNetwork: "Tiada sambungan internet untuk menyemak",
+    updateHint: "Selepas muat turun, ketik fail dalam pemberitahuan untuk pasang (fail anda kekal)",
     officeTitle: "Tukar fail ini ke PDF dahulu",
     officeSteps: "<li>Tekan <b>Buka dalam WPS</b> (atau aplikasi Office lain)</li><li>Dalam WPS, tekan <b>Kongsi → Kongsi sebagai PDF</b></li><li>Pilih <b>YourScanner</b>. Susun atur kekal sama</li>",
     officeOpen: "Buka dalam WPS",
