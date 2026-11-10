@@ -36,6 +36,7 @@ async function importImage(docId, blob, filter) {
 }
 
 const mkPage = (r, filter) => ({ id: uid(), o: r.o, f: r.o, t: r.t, rot: 0, quad: null, filter: filter || 'none', b: 0, c: 0, size: r.size || 0, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' });
+let lastUnsupported = [];
 const DOC_EXT = /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|zip|rar|7z|apk|mp4|mov|mp3|m4a|wav)$/i;
 
 /**
@@ -46,6 +47,7 @@ const DOC_EXT = /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|zip|rar|7z|apk|mp4|mov|mp3
 async function buildPages(docId, items, filter) {
   const pages = [];
   let bad = 0, unsupported = 0;
+  lastUnsupported = [];
   const dirUri = NATIVE ? store.uri(`docs/${docId}`) : null;
   const n = items.length;
   for (let k = 0; k < n; k++) {
@@ -86,12 +88,11 @@ async function buildPages(docId, items, filter) {
         }
         if (!p) p = await importImage(docId, await getBlob(), filter);
         pages.push(p);
-      } else unsupported++;
+      } else { unsupported++; lastUnsupported.push(it); }
     } catch (e) { bad++; }
   }
   busy(false);
-  if (unsupported) toast(t('unsupportedFile', { n: unsupported }), 6000);
-  else if (bad) toast(t('badImgs', { n: bad }), 4000);
+  if (bad && !unsupported) toast(t('badImgs', { n: bad }), 4000);
   return pages;
 }
 
@@ -436,9 +437,16 @@ async function newDocFrom(src, { ask = false, name = null } = {}) {
   }
   const id = uid();
   const pages = await buildPages(id, items, filter);
-  if (!pages.length) { await store.rmdir('docs/' + id); if (SHARE_MODE) setTimeout(finishShare, 3500); return null; }
+  const unsup = lastUnsupported.slice();
+  if (!pages.length) {
+    await store.rmdir('docs/' + id);
+    if (unsup.length) await offerOpenInOffice(unsup[0]);
+    return null;
+  }
   if (crop) await applyAutoCrop(id, pages);
-  return createDoc(id, pages, name);
+  const d = await createDoc(id, pages, name);
+  if (unsup.length) await offerOpenInOffice(unsup[0]);
+  return d;
 }
 
 async function addPages(kind) {
@@ -1431,5 +1439,49 @@ async function runOcrQueue(notify) {
     if (did && VIEW === 'home' && query) renderHome();
   } finally {
     ocrRunning = false;
+  }
+}
+
+/* =========================================================
+   Word / Excel / PPT：交给 WPS 等 app 打开，再以 PDF 分享回来（排版完全一样）
+   ========================================================= */
+const OFFICE_MIME = {
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  odt: 'application/vnd.oasis.opendocument.text',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  odp: 'application/vnd.oasis.opendocument.presentation',
+  rtf: 'application/rtf',
+};
+async function offerOpenInOffice(it) {
+  const ext = ((it.name || '').match(/\.([a-z0-9]+)$/i) || [])[1] || '';
+  const mime = OFFICE_MIME[ext.toLowerCase()] || it.type || '*/*';
+  const v = await openSheet(`
+    <h3>${esc(t('officeTitle'))}</h3>
+    <p class="desc">${esc(it.name || '')}</p>
+    <ol class="steps">${t('officeSteps')}</ol>
+    <div class="btns"><button id="of-no">${esc(t('cancel'))}</button><button class="primary" id="of-ok">${esc(t('officeOpen'))}</button></div>`, (sh) => {
+    $('#of-ok', sh).onclick = () => closeSheet(true);
+    $('#of-no', sh).onclick = () => closeSheet(false);
+  });
+  if (!v) return;
+  if (!NATIVE || !YsNative) return toast(t('phoneOnly'));
+  try {
+    // 先复制一份到缓存（系统只允许分享缓存里的文件）
+    const name = safeName((it.name || 'file').replace(/\.[a-z0-9]+$/i, '')) + (ext ? '.' + ext : '');
+    let path;
+    if (it.path) {
+      await FS.mkdir({ path: 'share', directory: 'CACHE', recursive: true }).catch(() => {});
+      const r = await FS.copy({ from: it.path, to: 'share/' + name, toDirectory: 'CACHE' }).catch(() => null);
+      path = r && r.uri ? r.uri : null;
+    }
+    if (!path) path = await store.blobToShare(name, it.blob || await fetchUri(it.path));
+    await YsNative.openWith({ path, mime, title: t('officeOpen') });
+  } catch (e) {
+    toast(t('officeFail'), 5000);
   }
 }

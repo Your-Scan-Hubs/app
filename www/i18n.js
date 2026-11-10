@@ -5,6 +5,10 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    officeTitle: "这个文件要先转成 PDF",
+    officeSteps: "<li>点 <b>用 WPS 打开</b>（或其他 Office app）</li><li>在 WPS 里点 <b>分享 → 以 PDF 分享</b></li><li>选 <b>YourScanner</b>，排版会跟原档完全一样</li>",
+    officeOpen: "用 WPS 打开",
+    officeFail: "打不开，手机里可能没有 WPS 或其他 Office app",
     scanMode: "扫描画面",
     scanModeHint: "拍照扫描时 Google 扫描器的功能多少。画面文字跟着手机系统语言。",
     smFull: "完整",
@@ -187,6 +191,10 @@ const STR = {
   },
 
   en: {
+    officeTitle: "Convert this file to PDF first",
+    officeSteps: "<li>Tap <b>Open in WPS</b> (or another Office app)</li><li>In WPS, tap <b>Share → Share as PDF</b></li><li>Choose <b>YourScanner</b>. The layout stays exactly the same</li>",
+    officeOpen: "Open in WPS",
+    officeFail: "Couldn't open it. WPS or another Office app may not be installed",
     scanMode: "Scanner screen",
     scanModeHint: "How many tools the Google scanner shows when you scan. Its text follows the phone’s system language.",
     smFull: "Full",
@@ -370,6 +378,10 @@ const STR = {
   },
 
   ms: {
+    officeTitle: "Tukar fail ini ke PDF dahulu",
+    officeSteps: "<li>Tekan <b>Buka dalam WPS</b> (atau aplikasi Office lain)</li><li>Dalam WPS, tekan <b>Kongsi → Kongsi sebagai PDF</b></li><li>Pilih <b>YourScanner</b>. Susun atur kekal sama</li>",
+    officeOpen: "Buka dalam WPS",
+    officeFail: "Tidak dapat dibuka. WPS atau aplikasi Office lain mungkin tiada",
     scanMode: "Skrin pengimbas",
     scanModeHint: "Berapa banyak alat yang ditunjukkan oleh pengimbas Google. Teksnya ikut bahasa sistem telefon.",
     smFull: "Penuh",

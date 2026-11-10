@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageDecoder;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.pdf.PdfRenderer;
 import com.getcapacitor.JSArray;
@@ -216,6 +217,19 @@ public class YsNativePlugin extends Plugin {
     }
 
     private static JSObject writePage(Bitmap bmp, File outDir, String id, int thumbMax, int quality) throws IOException {
+        // 透明背景（PNG 等）铺上白底，不然存成 JPEG 会变黑
+        if (bmp.hasAlpha()) {
+            Bitmap flat = Bitmap.createBitmap(bmp.getWidth(), bmp.getHeight(), Bitmap.Config.ARGB_8888);
+            flat.eraseColor(Color.WHITE);
+            new Canvas(flat).drawBitmap(bmp, 0, 0, null);
+            JSObject r = writePage(flat, outDir, id, thumbMax, quality, true);
+            flat.recycle();
+            return r;
+        }
+        return writePage(bmp, outDir, id, thumbMax, quality, true);
+    }
+
+    private static JSObject writePage(Bitmap bmp, File outDir, String id, int thumbMax, int quality, boolean flat) throws IOException {
         File o = new File(outDir, "o_" + id + ".jpg");
         try (OutputStream os = new FileOutputStream(o)) {
             bmp.compress(Bitmap.CompressFormat.JPEG, quality, os);
@@ -233,6 +247,30 @@ public class YsNativePlugin extends Plugin {
         r.put("t", t.getName());
         r.put("size", o.length());
         return r;
+    }
+
+    /** 用别的 app（例如 WPS）打开文件 */
+    @PluginMethod
+    public void openWith(PluginCall call) {
+        File src = fileFrom(call.getString("path"));
+        if (src == null || !src.exists()) {
+            call.reject("文件不存在");
+            return;
+        }
+        String mime = call.getString("mime", "*/*");
+        try {
+            Context ctx = getContext();
+            Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", src);
+            Intent view = new Intent(Intent.ACTION_VIEW);
+            view.setDataAndType(uri, mime);
+            view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(view, call.getString("title", "Open with"));
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getActivity().startActivity(chooser);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : "无法打开");
+        }
     }
 
     /** 分享处理完后清掉，免得下次回到 app 又导入一次 */
@@ -451,6 +489,13 @@ public class YsNativePlugin extends Plugin {
             if (bmp == null) {
                 call.reject("无法读取图片");
                 return;
+            }
+            if (bmp.hasAlpha()) {
+                Bitmap flat = Bitmap.createBitmap(bmp.getWidth(), bmp.getHeight(), Bitmap.Config.ARGB_8888);
+                flat.eraseColor(Color.WHITE);
+                new Canvas(flat).drawBitmap(bmp, 0, 0, null);
+                bmp.recycle();
+                bmp = flat;
             }
             File out = new File(getContext().getCacheDir(), "conv_" + System.currentTimeMillis() + ".jpg");
             try (OutputStream os = new FileOutputStream(out)) {

@@ -295,6 +295,10 @@ html.dark .sheet .btns button.danger { background: var(--danger); color: #fff; }
 .switch-row.on > svg { color: #14B8A6; }
 html.dark .sw { background: #48484A; }
 
+.sheet ol.steps { margin: 4px 0 6px; padding-left: 22px; color: var(--ink); font-size: 14.5px; line-height: 1.6; }
+.sheet ol.steps li { margin-bottom: 6px; }
+.sheet ol.steps b { color: var(--accent); }
+
 /* 弹层里的小标题 / PDF 设置 */
 .opt-label { font-size: 12.5px; color: var(--ink3); margin: 12px 0 7px; }
 .sheet .seg { margin-bottom: 2px; }
