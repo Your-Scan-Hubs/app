@@ -103,7 +103,7 @@ jobs:
           cp native/android/debug.keystore ~/.android/debug.keystore
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug || (echo "重试一次" && sleep 30 && ./gradlew assembleDebug)
 
       - uses: actions/upload-artifact@v4
         with:
