@@ -399,10 +399,19 @@ function toast(msg, ms = 2400) {
   clearTimeout(toastT);
   toastT = setTimeout(() => el.classList.remove('on'), ms);
 }
-function busy(text) {
+function busy(text, frac) {
   const b = $('#busy');
   if (text === false) { b.hidden = true; return; }
   $('#busy-text').textContent = text || t('busy');
+  // 有进度就显示百分比和进度条（例如 PDF 转换 21 / 143）
+  let f = frac;
+  if (f == null && text) { const m = String(text).match(/(\d+)\s*\/\s*(\d+)/); if (m && +m[2] > 1) f = +m[1] / +m[2]; }
+  const bar = $('#busy-bar');
+  if (f != null && isFinite(f)) {
+    bar.hidden = false;
+    $('#busy-fill').style.width = Math.round(Math.max(0, Math.min(1, f)) * 100) + '%';
+    $('#busy-pct').textContent = Math.round(f * 100) + '%';
+  } else bar.hidden = true;
   b.hidden = false;
 }
 
