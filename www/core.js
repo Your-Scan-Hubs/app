@@ -16,6 +16,24 @@ const SendIntent = plug('SendIntent');
 const AppP = plug('App');
 const YsNative = plug('YsNative');
 
+/** 用到时才载入的大工具（PDF、备份、拖动排序），让 app 打开更快 */
+const _scripts = {};
+function loadScript(src) {
+  if (!_scripts[src]) {
+    _scripts[src] = new Promise((res, rej) => {
+      const el = document.createElement('script');
+      el.src = src;
+      el.onload = () => res();
+      el.onerror = () => { delete _scripts[src]; rej(new Error('load ' + src)); };
+      document.head.appendChild(el);
+    });
+  }
+  return _scripts[src];
+}
+const needPdfLib = () => (window.PDFLib ? Promise.resolve() : loadScript('vendor/pdf-lib.min.js'));
+const needZip = () => (window.JSZip ? Promise.resolve() : loadScript('vendor/jszip.min.js'));
+const needSortable = () => (window.Sortable ? Promise.resolve() : loadScript('vendor/Sortable.min.js'));
+
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);

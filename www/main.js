@@ -23,22 +23,17 @@ async function checkShareIntent() {
     if (!items.length) return;
     closeSheet(null);
     closeDrawer();
-    busy(t('readingImgs'));
     const files = [];
     for (const it of items) {
       const u = decodeURIComponent(it.url);
-      try {
-        let blob = await fetchUri(u);
-        if (it.type && it.type.includes('/') && !it.type.includes('*') && it.type !== blob.type) blob = new Blob([blob], { type: it.type });
-        // 用真正的文件名（例如 BersihMax_A4.pdf），不用聊天附带的标题
-        const fileName = (u.split('/').pop() || '').trim();
-        const name = /\.[a-z0-9]{2,5}$/i.test(fileName) ? fileName : (it.title || fileName || '').trim();
-        files.push({ blob, name, path: u });
-      } catch (e) {}
+      // 用真正的文件名（例如 BersihMax_A4.pdf），不用聊天附带的标题
+      const fileName = (u.split('/').pop() || '').trim();
+      const name = /\.[a-z0-9]{2,5}$/i.test(fileName) ? fileName : (it.title || fileName || '').trim();
+      files.push({ path: u, name, type: it.type && !it.type.includes('*') ? it.type : '' });
     }
-    busy(false);
     if (!files.length) { toast(t('readImgsFail')); return; }
-    await newDocFrom(files, { ask: files.every((f) => isImage(f.blob, f.name)) });
+    busy(false);
+    await newDocFrom(files, { ask: files.every((f) => isImage({ type: f.type }, f.name)) });
     for (const f of files) { try { await FS.deleteFile({ path: f.path }); } catch (e) {} }
   } finally {
     busy(false);

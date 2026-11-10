@@ -476,6 +476,7 @@ async function makeBackup() {
   const docs = live();
   if (!docs.length) return toast(t('nothingToBackup'));
   try {
+    await needZip();
     const zip = new JSZip();
     zip.file('yourscan.json', JSON.stringify({ app: 'YourScanner', v: 1, created: Date.now(), folders: DB.folders, docs }));
     for (let i = 0; i < docs.length; i++) {
@@ -519,6 +520,7 @@ async function doRestore() {
   if (!file) return;
   busy(t('readingBackup'));
   try {
+    await needZip();
     const zip = await JSZip.loadAsync(file);
     const meta = zip.file('yourscan.json');
     if (!meta) throw new Error(t('badBackup'));

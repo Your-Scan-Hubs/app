@@ -51,8 +51,11 @@ async function buildPages(docId, items, filter) {
   for (let k = 0; k < n; k++) {
     const it = items[k];
     const pre = n > 1 ? `${k + 1}/${n} · ` : '';
+    // 分享进来的文件先不读进网页，按名字/类型判断，交给原生直接处理
+    const kind = it.blob || { type: it.type || '' };
+    const getBlob = async () => it.blob || (it.blob = await fetchUri(it.path));
     try {
-      if (isPdf(it.blob, it.name)) {
+      if (isPdf(kind, it.name)) {
         let done = false;
         if (NATIVE && YsNative) {
           let h = null;
@@ -60,28 +63,28 @@ async function buildPages(docId, items, filter) {
             busy(pre + t('readingPdf'));
             const path = it.path || await store.blobToShare('in_' + uid() + '.pdf', it.blob);
             h = await YsNative.addListener('progress', (e) => busy(pre + t('pdfPageN', { i: e.i, n: e.n })));
-            const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 2200, thumbMax: THUMB_MAX });
+            const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 1800, thumbMax: THUMB_MAX });
             (r.pages || []).forEach((x) => pages.push(mkPage(x, filter)));
             done = true;
           } catch (e) { /* 系统打不开（例如有密码）就用网页方式再试 */ }
           finally { if (h) h.remove(); }
         }
         if (!done) {
-          const bl = await pdfToBlobs(it.blob);
+          const bl = await pdfToBlobs(await getBlob());
           for (let i = 0; i < bl.length; i++) {
             busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
             pages.push(await importImage(docId, bl[i], filter));
           }
         }
-      } else if (isText(it.blob, it.name)) {
-        for (const b of await textToBlobs(it.blob)) pages.push(await importImage(docId, b, filter));
-      } else if (isImage(it.blob, it.name) || !DOC_EXT.test(it.name || '')) {
+      } else if (isText(kind, it.name)) {
+        for (const b of await textToBlobs(await getBlob())) pages.push(await importImage(docId, b, filter));
+      } else if (isImage(kind, it.name) || !DOC_EXT.test(it.name || '')) {
         let p = null;
         busy(t('loadingN', { i: k + 1, n }));
         if (NATIVE && YsNative && it.path) {
           try { p = mkPage(await YsNative.importImage({ path: it.path, outDir: dirUri, id: uid(), max: STORE_MAX, thumbMax: THUMB_MAX }), filter); } catch (e) {}
         }
-        if (!p) p = await importImage(docId, it.blob || await fetchUri(it.path), filter);
+        if (!p) p = await importImage(docId, await getBlob(), filter);
         pages.push(p);
       } else unsupported++;
     } catch (e) { bad++; }
@@ -411,7 +414,7 @@ async function createDoc(id, pages, name) {
   DB.docs.push(d);
   await saveDB();
   openDoc(id);
-  setTimeout(runOcrQueue, 1500);
+  setTimeout(runOcrQueue, 4000);
   return d;
 }
 
@@ -419,6 +422,7 @@ async function createDoc(id, pages, name) {
 async function newDocFrom(src, { ask = false, name = null } = {}) {
   if (!src || !src.length) return null;
   const items = src.map((x) => (x instanceof Blob ? { blob: x, name: x.name } : x));
+  const kindOf = (it) => it.blob || { type: it.type || '' };
   let filter = 'none', crop = false;
   if (ask) {
     const r = await batchDialog(items.length);
@@ -427,7 +431,7 @@ async function newDocFrom(src, { ask = false, name = null } = {}) {
     crop = r.crop;
   }
   if (!name) {
-    const first = items.find((it) => it.name && !isImage(it.blob, it.name));
+    const first = items.find((it) => it.name && !isImage(kindOf(it), it.name));
     if (first) name = String(first.name).replace(/\.[a-z0-9]{1,5}$/i, '');
   }
   const id = uid();
@@ -516,7 +520,8 @@ function renderDoc() {
     });
   });
   if (docSortable) { docSortable.destroy(); docSortable = null; }
-  if (SEL) {
+  if (SEL && !window.Sortable) { needSortable().then(() => { if (SEL) renderDoc(); }).catch(() => {}); }
+  else if (SEL) {
     // 选择模式下长按拖动可以排序
     docSortable = new Sortable(box, {
       animation: 160, delay: 300, delayOnTouchOnly: true, touchStartThreshold: 6,
@@ -1049,6 +1054,7 @@ $('#fl-all').addEventListener('click', () => filterApply(true));
    PDF / 导出
    ========================================================= */
 async function buildPdf(d, onProgress) {
+  await needPdfLib();
   const { PDFDocument } = PDFLib;
   const o = d.pdfOpts || {};
   const Q = QUALITY[o.quality] || QUALITY.std;
@@ -1061,8 +1067,8 @@ async function buildPdf(d, onProgress) {
     const pg = d.pages[i];
     const raw = await store.read(pagePath(d, pg.f));
     let img = null, w, h;
-    // 没滤镜、没水印、画质选清晰：原图直接放进 PDF，不再重新压缩（快很多）
-    if (pcss(pg) === 'none' && !(o.wm || '').trim() && o.quality === 'hd') {
+    // 没滤镜、没水印（画质不是“小文件”）：原图直接放进 PDF，不再重新压缩（快很多）
+    if (pcss(pg) === 'none' && !(o.wm || '').trim() && o.quality !== 'small') {
       try { img = await pdf.embedJpg(new Uint8Array(await raw.arrayBuffer())); w = img.width; h = img.height; } catch (e) { img = null; }
     }
     if (!img) {
