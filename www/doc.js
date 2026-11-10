@@ -944,8 +944,8 @@ async function buildPdf(d, onProgress) {
   const Q = QUALITY[o.quality] || QUALITY.std;
   const pdf = await PDFDocument.create();
   pdf.setTitle(d.name);
-  pdf.setCreator('YourScan');
-  pdf.setProducer('YourScan');
+  pdf.setCreator('YourScanner');
+  pdf.setProducer('YourScanner');
   for (let i = 0; i < d.pages.length; i++) {
     if (onProgress) onProgress(i + 1, d.pages.length);
     const pg = d.pages[i];

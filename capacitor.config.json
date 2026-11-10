@@ -1,6 +1,6 @@
 {
   "appId": "com.yourscanhubs.app",
-  "appName": "YourScan",
+  "appName": "YourScanner",
   "webDir": "www",
   "android": {
     "backgroundColor": "#F4F6FA"

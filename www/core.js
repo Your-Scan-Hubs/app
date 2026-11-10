@@ -1,6 +1,6 @@
 'use strict';
 /* =========================================================
-   YourScan — 办公室文件扫描
+   YourScanner — 办公室文件扫描
    拍照扫描（ML Kit）/ 相册合成 PDF / 离线文字识别搜索
    文件只存在手机里（app 私有空间）
    ========================================================= */
@@ -462,5 +462,5 @@ function defaultName() {
   const p = (DB.settings.prefix || '').trim() || t('defaultPrefix');
   return `${p}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
-const safeName = (s) => (s || 'YourScan').replace(/[\\/:*?"<>|\n\r\t]+/g, '_').replace(/^\.+/, '').slice(0, 80).trim() || 'YourScan';
+const safeName = (s) => (s || 'YourScanner').replace(/[\\/:*?"<>|\n\r\t]+/g, '_').replace(/^\.+/, '').slice(0, 80).trim() || 'YourScanner';
 

@@ -22,7 +22,7 @@ function closeDrawer() { $('#drawer').classList.remove('on'); $('#drawer-bg').cl
 function openDrawer() {
   const cnt = (f) => live().filter((d) => (d.folder || '') === f).length;
   const row = (k, icon, label, right, on) => `<button class="dr-row ${on ? 'on' : ''}" data-k="${esc(k)}">${icon}<span>${esc(label)}</span>${right != null ? `<span class="r">${esc(right)}</span>` : ''}</button>`;
-  let h = `<div class="dr-head"><div class="dr-brand"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /><div class="dr-logo">YourScan</div></div><div class="dr-ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div></div>`;
+  let h = `<div class="dr-head"><div class="dr-brand"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /><div class="dr-logo">YourScanner</div></div><div class="dr-ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div></div>`;
   h += row('settings', I.gear, t('settings'));
   h += '<div class="dr-sep"></div>';
   h += row('__all', I.docs, t('myDocs'), live().length, curFolder === '__all');
@@ -52,7 +52,7 @@ async function drawerPick(k) {
   if (k === 'backup') return backupSheet();
   if (k === 'importpdf') return importPdfFile();
   if (k === 'help') return actionSheet(t('help'), [{ label: t('gotIt'), value: 'ok' }], '', t('helpHtml'));
-  if (k === 'about') return actionSheet('YourScan', [{ label: t('gotIt'), value: 'ok' }], `${t('version')} ${APP_VER || '1.0'} · ${t('aboutText')}`, '<div class="about-logo"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /></div>');
+  if (k === 'about') return actionSheet('YourScanner', [{ label: t('gotIt'), value: 'ok' }], `${t('version')} ${APP_VER || '1.0'} · ${t('aboutText')}`, '<div class="about-logo"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /></div>');
   if (k === 'newfolder') {
     const n = await promptSheet(t('newFolder'), '', t('folderPh'));
     if (!n) return;
@@ -474,7 +474,7 @@ async function makeBackup() {
   if (!docs.length) return toast(t('nothingToBackup'));
   try {
     const zip = new JSZip();
-    zip.file('yourscan.json', JSON.stringify({ app: 'YourScan', v: 1, created: Date.now(), folders: DB.folders, docs }));
+    zip.file('yourscan.json', JSON.stringify({ app: 'YourScanner', v: 1, created: Date.now(), folders: DB.folders, docs }));
     for (let i = 0; i < docs.length; i++) {
       busy(t('backingUp', { i: i + 1, n: docs.length }));
       const d = docs[i];
@@ -485,7 +485,7 @@ async function makeBackup() {
     busy(t('packing'));
     const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
     const dt = new Date();
-    const name = `YourScan_backup_${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}_${pad(dt.getHours())}${pad(dt.getMinutes())}.zip`;
+    const name = `YourScanner_backup_${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}_${pad(dt.getHours())}${pad(dt.getMinutes())}.zip`;
     if (!NATIVE) {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = name; a.click();
@@ -592,7 +592,7 @@ async function settingsSheet() {
   } else if (v === 'f') {
     manageFolders();
   } else if (v === 'about') {
-    await actionSheet('YourScan', [{ label: t('gotIt'), value: 'ok' }], t('aboutText'));
+    await actionSheet('YourScanner', [{ label: t('gotIt'), value: 'ok' }], t('aboutText'));
   }
 }
 

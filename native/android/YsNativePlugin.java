@@ -89,7 +89,7 @@ public class YsNativePlugin extends Plugin {
                 v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
                 v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
                 v.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                        (image ? Environment.DIRECTORY_PICTURES : Environment.DIRECTORY_DOWNLOADS) + "/YourScan");
+                        (image ? Environment.DIRECTORY_PICTURES : Environment.DIRECTORY_DOWNLOADS) + "/YourScanner");
                 v.put(MediaStore.MediaColumns.IS_PENDING, 1);
                 Uri collection = image
                         ? MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
@@ -105,7 +105,7 @@ public class YsNativePlugin extends Plugin {
                 cr.update(uri, done, null, null);
             } else {
                 File dir = new File(Environment.getExternalStoragePublicDirectory(
-                        image ? Environment.DIRECTORY_PICTURES : Environment.DIRECTORY_DOWNLOADS), "YourScan");
+                        image ? Environment.DIRECTORY_PICTURES : Environment.DIRECTORY_DOWNLOADS), "YourScanner");
                 if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法建立文件夹");
                 File dst = new File(dir, name);
                 try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(dst)) {
@@ -128,7 +128,7 @@ public class YsNativePlugin extends Plugin {
             call.reject("文件不存在");
             return;
         }
-        String name = call.getString("name", "YourScan.pdf");
+        String name = call.getString("name", "YourScanner.pdf");
         getActivity().runOnUiThread(() -> {
             try {
                 PrintManager pm = (PrintManager) getActivity().getSystemService(Context.PRINT_SERVICE);

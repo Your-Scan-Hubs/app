@@ -128,14 +128,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: YourScan-apk
+          name: YourScanner-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Publish to Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk YourScan.apk
-          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --title "YourScan Android 最新版" --notes "每次更新后自动替换。手机上直接下载 YourScan.apk 安装即可（覆盖安装，不会丢失文件）。" --prerelease
-          gh release upload android-latest YourScan.apk --clobber
-          gh release edit android-latest --notes "版本 1.0.${{ github.run_number }}。手机上直接下载 YourScan.apk 安装即可（覆盖安装，不会丢失文件）。"
+          cp android/app/build/outputs/apk/debug/app-debug.apk YourScanner.apk && cp YourScanner.apk YourScan.apk
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --title "YourScanner Android 最新版" --notes "每次更新后自动替换。手机上直接下载 YourScanner.apk 安装即可（覆盖安装，不会丢失文件）。" --prerelease
+          gh release upload android-latest YourScanner.apk YourScan.apk --clobber
+          gh release edit android-latest --notes "版本 1.0.${{ github.run_number }}。手机上直接下载 YourScanner.apk 安装即可（覆盖安装，不会丢失文件）。"
