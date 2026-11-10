@@ -8,6 +8,9 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageDecoder;
+import android.graphics.Color;
+import android.graphics.pdf.PdfRenderer;
+import com.getcapacitor.JSArray;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
@@ -169,6 +172,131 @@ public class YsNativePlugin extends Plugin {
                 callback.onWriteFailed(e.getMessage());
             }
         }
+    }
+
+    private static Bitmap decodeScaled(File src, final int max) throws IOException {
+        if (Build.VERSION.SDK_INT >= 28) {
+            return ImageDecoder.decodeBitmap(ImageDecoder.createSource(src), (decoder, info, source) -> {
+                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                int w = info.getSize().getWidth(), h = info.getSize().getHeight();
+                int m = Math.max(w, h);
+                if (m > max) {
+                    float sc = (float) max / m;
+                    decoder.setTargetSize(Math.max(1, Math.round(w * sc)), Math.max(1, Math.round(h * sc)));
+                }
+            });
+        }
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(src.getAbsolutePath(), o);
+        int sample = 1;
+        while (Math.max(o.outWidth, o.outHeight) / sample > max * 2) sample *= 2;
+        BitmapFactory.Options o2 = new BitmapFactory.Options();
+        o2.inSampleSize = sample;
+        Bitmap b = BitmapFactory.decodeFile(src.getAbsolutePath(), o2);
+        if (b == null) return null;
+        int m = Math.max(b.getWidth(), b.getHeight());
+        if (m > max) {
+            float sc = (float) max / m;
+            Bitmap s = Bitmap.createScaledBitmap(b, Math.max(1, Math.round(b.getWidth() * sc)), Math.max(1, Math.round(b.getHeight() * sc)), true);
+            if (s != b) b.recycle();
+            b = s;
+        }
+        return b;
+    }
+
+    /** 存一页：原图 o_ + 缩略图 t_，返回 {o, t, size} */
+    private static JSObject writePage(Bitmap bmp, File outDir, String id, int thumbMax) throws IOException {
+        File o = new File(outDir, "o_" + id + ".jpg");
+        try (OutputStream os = new FileOutputStream(o)) {
+            bmp.compress(Bitmap.CompressFormat.JPEG, 90, os);
+        }
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        float sc = Math.min(1f, (float) thumbMax / Math.max(w, h));
+        Bitmap th = Bitmap.createScaledBitmap(bmp, Math.max(1, Math.round(w * sc)), Math.max(1, Math.round(h * sc)), true);
+        File t = new File(outDir, "t_" + id + ".jpg");
+        try (OutputStream os = new FileOutputStream(t)) {
+            th.compress(Bitmap.CompressFormat.JPEG, 75, os);
+        }
+        if (th != bmp) th.recycle();
+        JSObject r = new JSObject();
+        r.put("o", o.getName());
+        r.put("t", t.getName());
+        r.put("size", o.length());
+        return r;
+    }
+
+    /** 一张图片直接在原生层存成页面（比网页里处理快很多，也支持 HEIC） */
+    @PluginMethod
+    public void importImage(PluginCall call) {
+        File src = fileFrom(call.getString("path"));
+        File outDir = fileFrom(call.getString("outDir"));
+        String id = call.getString("id", String.valueOf(System.currentTimeMillis()));
+        int max = call.getInt("max", 2480);
+        int thumbMax = call.getInt("thumbMax", 420);
+        if (src == null || !src.exists() || outDir == null) {
+            call.reject("文件不存在");
+            return;
+        }
+        new Thread(() -> {
+            try {
+                if (!outDir.exists()) outDir.mkdirs();
+                Bitmap bmp = decodeScaled(src, max);
+                if (bmp == null) {
+                    call.reject("无法读取图片");
+                    return;
+                }
+                JSObject r = writePage(bmp, outDir, id, thumbMax);
+                bmp.recycle();
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : "无法读取图片");
+            }
+        }).start();
+    }
+
+    /** PDF 每一页转成图片（Android 自带 PdfRenderer，很快） */
+    @PluginMethod
+    public void pdfToImages(PluginCall call) {
+        File src = fileFrom(call.getString("path"));
+        File outDir = fileFrom(call.getString("outDir"));
+        String prefix = call.getString("prefix", String.valueOf(System.currentTimeMillis()));
+        int max = call.getInt("max", 2200);
+        int thumbMax = call.getInt("thumbMax", 420);
+        if (src == null || !src.exists() || outDir == null) {
+            call.reject("文件不存在");
+            return;
+        }
+        new Thread(() -> {
+            try (ParcelFileDescriptor pfd = ParcelFileDescriptor.open(src, ParcelFileDescriptor.MODE_READ_ONLY);
+                 PdfRenderer renderer = new PdfRenderer(pfd)) {
+                if (!outDir.exists()) outDir.mkdirs();
+                int n = renderer.getPageCount();
+                JSArray pages = new JSArray();
+                for (int i = 0; i < n; i++) {
+                    Bitmap bmp;
+                    try (PdfRenderer.Page page = renderer.openPage(i)) {
+                        float sc = Math.min(4f, (float) max / Math.max(page.getWidth(), page.getHeight()));
+                        int w = Math.max(1, Math.round(page.getWidth() * sc));
+                        int h = Math.max(1, Math.round(page.getHeight() * sc));
+                        bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                        bmp.eraseColor(Color.WHITE);
+                        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                    }
+                    pages.put(writePage(bmp, outDir, prefix + "_" + i, thumbMax));
+                    bmp.recycle();
+                    JSObject ev = new JSObject();
+                    ev.put("i", i + 1);
+                    ev.put("n", n);
+                    notifyListeners("progress", ev);
+                }
+                JSObject r = new JSObject();
+                r.put("pages", pages);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : "PDF 打不开");
+            }
+        }).start();
     }
 
     /** 系统能读的任何图片（HEIC 等）转成 JPEG，最长边 2480 */

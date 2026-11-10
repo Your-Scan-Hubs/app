@@ -22,17 +22,16 @@ async function checkShareIntent() {
   for (const it of items) {
     const u = decodeURIComponent(it.url);
     try {
-      const blob = await fetchUri(u);
-      const name = (it.title || u.split('/').pop() || '').trim();
-      files.push({ blob: it.type && it.type !== blob.type && it.type.includes('/') && !it.type.includes('*') ? new Blob([blob], { type: it.type }) : blob, name });
+      let blob = await fetchUri(u);
+      if (it.type && it.type.includes('/') && !it.type.includes('*') && it.type !== blob.type) blob = new Blob([blob], { type: it.type });
+      files.push({ blob, name: (it.title || u.split('/').pop() || '').trim(), path: u });
     } catch (e) {}
-    try { await FS.deleteFile({ path: u }); } catch (e) {}
   }
-  const onlyImages = files.every((f) => isImage(f.blob, f.name));
-  const { blobs, pdfName } = await expandFiles(files);
   busy(false);
-  if (!blobs.length) { if (!files.length) toast(t('readImgsFail')); setTimeout(finishShare, 3500); return; }
-  await newDocFrom(blobs, { ask: onlyImages, name: onlyImages ? null : pdfName });
+  if (!files.length) { toast(t('readImgsFail')); return finishShare(); }
+  await newDocFrom(files, { ask: files.every((f) => isImage(f.blob, f.name)) });
+  // 转换完再删掉分享时复制进来的临时文件
+  for (const f of files) { try { await FS.deleteFile({ path: f.path }); } catch (e) {} }
 }
 
 function goBack() {

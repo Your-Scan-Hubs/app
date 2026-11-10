@@ -35,15 +35,60 @@ async function importImage(docId, blob, filter) {
   return { id: uid(), o, f: o, t: tn, rot: 0, quad: null, filter: filter || 'none', b: 0, c: 0, size: ob.size, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' };
 }
 
-async function importMany(docId, blobs, filter) {
+const mkPage = (r, filter) => ({ id: uid(), o: r.o, f: r.o, t: r.t, rot: 0, quad: null, filter: filter || 'none', b: 0, c: 0, size: r.size || 0, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' });
+const DOC_EXT = /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|zip|rar|7z|apk|mp4|mov|mp3|m4a|wav)$/i;
+
+/**
+ * 把收到的东西（图片 / PDF / 文字文件）变成页面。
+ * 手机上优先用原生转换（快很多），不行再用网页方式。
+ * items: [{ blob, name?, path? }]
+ */
+async function buildPages(docId, items, filter) {
   const pages = [];
-  let bad = 0;
-  for (let i = 0; i < blobs.length; i++) {
-    busy(t('loadingN', { i: i + 1, n: blobs.length }));
-    try { pages.push(await importImage(docId, blobs[i], filter)); } catch (e) { bad++; }
+  let bad = 0, unsupported = 0;
+  const dirUri = NATIVE ? store.uri(`docs/${docId}`) : null;
+  const n = items.length;
+  for (let k = 0; k < n; k++) {
+    const it = items[k];
+    const pre = n > 1 ? `${k + 1}/${n} · ` : '';
+    try {
+      if (isPdf(it.blob, it.name)) {
+        let done = false;
+        if (NATIVE && YsNative) {
+          let h = null;
+          try {
+            busy(pre + t('readingPdf'));
+            const path = it.path || await store.blobToShare('in_' + uid() + '.pdf', it.blob);
+            h = await YsNative.addListener('progress', (e) => busy(pre + t('pdfPageN', { i: e.i, n: e.n })));
+            const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 2200, thumbMax: THUMB_MAX });
+            (r.pages || []).forEach((x) => pages.push(mkPage(x, filter)));
+            done = true;
+          } catch (e) { /* 系统打不开（例如有密码）就用网页方式再试 */ }
+          finally { if (h) h.remove(); }
+        }
+        if (!done) {
+          const bl = await pdfToBlobs(it.blob);
+          for (let i = 0; i < bl.length; i++) {
+            busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
+            pages.push(await importImage(docId, bl[i], filter));
+          }
+        }
+      } else if (isText(it.blob, it.name)) {
+        for (const b of await textToBlobs(it.blob)) pages.push(await importImage(docId, b, filter));
+      } else if (isImage(it.blob, it.name) || !DOC_EXT.test(it.name || '')) {
+        let p = null;
+        busy(t('loadingN', { i: k + 1, n }));
+        if (NATIVE && YsNative && it.path) {
+          try { p = mkPage(await YsNative.importImage({ path: it.path, outDir: dirUri, id: uid(), max: STORE_MAX, thumbMax: THUMB_MAX }), filter); } catch (e) {}
+        }
+        if (!p) p = await importImage(docId, it.blob, filter);
+        pages.push(p);
+      } else unsupported++;
+    } catch (e) { bad++; }
   }
   busy(false);
-  if (bad) toast(t('badImgs', { n: bad }));
+  if (unsupported) toast(t('unsupportedFile', { n: unsupported }), 6000);
+  else if (bad) toast(t('badImgs', { n: bad }), 4000);
   return pages;
 }
 
@@ -167,30 +212,6 @@ async function textToBlobs(blob) {
   return out;
 }
 
-/** 收到的文件（图片 / PDF / 文字 / 其他）全部展开成页面图片 */
-async function expandFiles(items) {
-  const blobs = [];
-  let docName = null, bad = 0, unsupported = 0;
-  const nameOf = (it) => String(it.name || '').replace(/\.[a-z0-9]{1,5}$/i, '');
-  for (const it of items) {
-    try {
-      if (isPdf(it.blob, it.name)) {
-        blobs.push(...(await pdfToBlobs(it.blob)));
-        if (!docName && it.name) docName = nameOf(it);
-      } else if (isText(it.blob, it.name)) {
-        blobs.push(...(await textToBlobs(it.blob)));
-        if (!docName && it.name) docName = nameOf(it);
-      } else if (isImage(it.blob, it.name) || !it.name || !/\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|zip|rar|7z|apk|mp4|mov|mp3|m4a|wav)$/i.test(it.name)) {
-        blobs.push(it.blob); // 图片（或未知类型，先当图片试）
-      } else unsupported++;
-    } catch (e) { bad++; }
-  }
-  busy(false);
-  if (unsupported) toast(t('unsupportedFile', { n: unsupported }), 6000);
-  else if (bad) toast(t('pdfFail'), 4000);
-  return { blobs, pdfName: docName };
-}
-
 function pickPdf() {
   return new Promise((res) => {
     const inp = $('#pdf-input');
@@ -203,11 +224,8 @@ function pickPdf() {
 async function importPdfFile() {
   const fs = await pickPdf();
   if (!fs) return;
-  busy(t('readingPdf'));
   const items = fs.map((f) => ({ blob: f, name: f.name }));
-  const onlyImages = items.every((it) => isImage(it.blob, it.name));
-  const { blobs, pdfName } = await expandFiles(items);
-  if (blobs.length) await newDocFrom(blobs, { ask: onlyImages, name: onlyImages ? null : pdfName });
+  await newDocFrom(items, { ask: items.every((it) => isImage(it.blob, it.name)) });
 }
 
 /* ---------- 批量导入对话框（选好相册图片后） ---------- */
@@ -228,18 +246,23 @@ function batchDialog(n) {
   });
 }
 
-/** 新建文件（扫描结果直接用；相册图片先问滤镜） */
-async function newDocFrom(blobs, { ask = false, name = null } = {}) {
-  if (!blobs || !blobs.length) return;
+/** 新建文件（扫描结果直接用；相册图片先问滤镜）。src：Blob 或 {blob, name, path} */
+async function newDocFrom(src, { ask = false, name = null } = {}) {
+  if (!src || !src.length) return null;
+  const items = src.map((x) => (x instanceof Blob ? { blob: x, name: x.name } : x));
   let filter = 'none';
   if (ask) {
-    const r = await batchDialog(blobs.length);
-    if (!r) { if (SHARE_MODE) finishShare(); return; }
+    const r = await batchDialog(items.length);
+    if (!r) { if (SHARE_MODE) finishShare(); return null; }
     filter = r.filter;
   }
+  if (!name) {
+    const first = items.find((it) => it.name && !isImage(it.blob, it.name));
+    if (first) name = String(first.name).replace(/\.[a-z0-9]{1,5}$/i, '');
+  }
   const id = uid();
-  const pages = await importMany(id, blobs, filter);
-  if (!pages.length) { await store.rmdir('docs/' + id); if (SHARE_MODE) finishShare(); return; }
+  const pages = await buildPages(id, items, filter);
+  if (!pages.length) { await store.rmdir('docs/' + id); if (SHARE_MODE) setTimeout(finishShare, 3500); return null; }
   const now = Date.now();
   const d = {
     id, name: (name && name.trim()) || defaultName(),
@@ -251,7 +274,8 @@ async function newDocFrom(blobs, { ask = false, name = null } = {}) {
   DB.docs.push(d);
   await saveDB();
   openDoc(id);
-  runOcrQueue();
+  setTimeout(runOcrQueue, 1500);
+  return d;
 }
 
 async function addPages(kind) {
@@ -265,7 +289,7 @@ async function addPages(kind) {
     if (!r) return;
     filter = r.filter;
   }
-  const pages = await importMany(d.id, blobs, filter);
+  const pages = await buildPages(d.id, blobs.map((b) => ({ blob: b, name: b.name })), filter);
   if (!pages.length) return;
   d.pages.push(...pages);
   await touch(d);
