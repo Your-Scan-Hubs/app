@@ -182,7 +182,7 @@ const STR = {
     setSummary: '共 {n} 份文件 · PDF 约 {size} · 文件只保存在这部手机里',
     setTo: '已设为{name}', prefixPh: '例如：扫描、公司名', newNameToast: '新文件会叫 {name}',
     gotIt: '知道了',
-    aboutText: '给办公室同事用的文件扫描工具。无广告，扫描和文字识别都在手机里离线完成，文件不会上传到任何地方。',
+    aboutText: '简单好用的文件扫描工具。无广告，扫描和文字识别都在手机里离线完成，文件不会上传到任何地方。',
     readingImgs: '正在读取图片…', readImgsFail: '读取图片失败', loadFail: '读取文件列表失败：',
   },
 
@@ -365,7 +365,7 @@ const STR = {
     setSummary: '{n} files · PDFs about {size} · Files are stored only on this phone',
     setTo: 'Set to {name}', prefixPh: 'e.g. Scan, company name', newNameToast: 'New files will be named {name}',
     gotIt: 'Got it',
-    aboutText: 'A document scanner for the office. No ads. Scanning and text recognition happen offline on the phone, and files are never uploaded anywhere.',
+    aboutText: 'A simple document scanner. No ads. Scanning and text recognition happen offline on your phone, and files are never uploaded anywhere.',
     readingImgs: 'Reading images…', readImgsFail: 'Couldn’t read images', loadFail: 'Couldn’t load file list: ',
   },
 
@@ -547,7 +547,7 @@ const STR = {
     setSummary: '{n} fail · PDF kira-kira {size} · Fail disimpan di telefon ini sahaja',
     setTo: 'Ditetapkan ke {name}', prefixPh: 'cth. Imbasan, nama syarikat', newNameToast: 'Fail baharu akan dinamakan {name}',
     gotIt: 'Faham',
-    aboutText: 'Pengimbas dokumen untuk pejabat. Tiada iklan. Imbasan dan pengecaman teks dibuat di luar talian dalam telefon, dan fail tidak dimuat naik ke mana-mana.',
+    aboutText: 'Pengimbas dokumen yang ringkas. Tiada iklan. Imbasan dan pengecaman teks dibuat di luar talian dalam telefon anda, dan fail tidak dimuat naik ke mana-mana.',
     readingImgs: 'Membaca imej…', readImgsFail: 'Gagal membaca imej', loadFail: 'Gagal memuat senarai fail: ',
   },
 };

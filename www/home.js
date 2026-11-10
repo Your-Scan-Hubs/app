@@ -52,7 +52,7 @@ async function drawerPick(k) {
   if (k === 'backup') return backupSheet();
   if (k === 'importpdf') return importPdfFile();
   if (k === 'help') return actionSheet(t('help'), [{ label: t('gotIt'), value: 'ok' }], '', t('helpHtml'));
-  if (k === 'about') return actionSheet('YourScanner', [{ label: t('gotIt'), value: 'ok' }], `${t('version')} ${APP_VER || '1.0'} · ${t('aboutText')}`, '<div class="about-logo"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /></div>');
+  if (k === 'about') return aboutSheet();
   if (k === 'newfolder') {
     const n = await promptSheet(t('newFolder'), '', t('folderPh'));
     if (!n) return;
@@ -602,7 +602,7 @@ async function settingsSheet() {
   } else if (v === 'f') {
     manageFolders();
   } else if (v === 'about') {
-    await actionSheet('YourScanner', [{ label: t('gotIt'), value: 'ok' }], t('aboutText'));
+    await aboutSheet();
   }
 }
 
@@ -668,3 +668,17 @@ $('#ts-del').addEventListener('click', async () => {
     el.addEventListener('touchend', end(false), { passive: true });
   }
 })();
+
+/** 关于：logo 在上，名字、版本、说明在下 */
+function aboutSheet() {
+  return openSheet(`
+    <div class="about">
+      <img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" />
+      <h3>YourScanner</h3>
+      <div class="ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div>
+      <p>${esc(t('aboutText'))}</p>
+    </div>
+    <div class="btns"><button class="primary" id="ab-ok">${esc(t('gotIt'))}</button></div>`, (sh) => {
+    $('#ab-ok', sh).onclick = () => closeSheet(true);
+  });
+}
