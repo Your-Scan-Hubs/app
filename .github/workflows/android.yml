@@ -48,6 +48,25 @@ jobs:
           sed -i 's/Theme.AppCompat.Light.DarkActionBar/Theme.AppCompat.DayNight.DarkActionBar/; s/Theme.AppCompat.Light.NoActionBar/Theme.AppCompat.DayNight.NoActionBar/' android/app/src/main/res/values/styles.xml
           cat android/app/src/main/res/values/styles.xml
 
+          # 固定签名：直接在 build.gradle 指定我们自己的签名文件（之前放在 ~/.android 没生效）
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  fixed {
+                      storeFile file('../../native/android/debug.keystore')
+                      storePassword 'android'
+                      keyAlias 'androiddebugkey'
+                      keyPassword 'android'
+                  }
+              }
+              buildTypes {
+                  debug { signingConfig signingConfigs.fixed }
+                  release { signingConfig signingConfigs.fixed }
+              }
+          }
+          GRADLE
+
           # 2) 离线文字识别（ML Kit 中文模型，同时认英文/马来文）
           cat >> android/app/build.gradle <<'GRADLE'
 
@@ -104,6 +123,8 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug || (echo "重试一次" && sleep 30 && ./gradlew assembleDebug)
+          # 检查签名是不是我们固定的那把
+          keytool -printcert -jarfile app/build/outputs/apk/debug/app-debug.apk | grep SHA256
 
       - uses: actions/upload-artifact@v4
         with:
