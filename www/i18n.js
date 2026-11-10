@@ -5,6 +5,14 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    secFolders: "文件夹",
+    secTools: "工具",
+    secApp: "App",
+    secGeneral: "一般",
+    secScan: "扫描",
+    languageShort: "语言",
+    importFiles: "导入文件",
+    storageNote: "共 {n} 份文件，约 {size}。文件只保存在这部手机里，换手机前记得备份。",
     checkUpdate: "检查更新",
     curVer: "手机上的版本",
     latestVer: "最新版本",
@@ -200,6 +208,14 @@ const STR = {
   },
 
   en: {
+    secFolders: "Folders",
+    secTools: "Tools",
+    secApp: "App",
+    secGeneral: "General",
+    secScan: "Scanning",
+    languageShort: "Language",
+    importFiles: "Import files",
+    storageNote: "{n} files, about {size}. Files are stored only on this phone, so back up before changing phones.",
     checkUpdate: "Check for updates",
     curVer: "Installed version",
     latestVer: "Latest version",
@@ -396,6 +412,14 @@ const STR = {
   },
 
   ms: {
+    secFolders: "Folder",
+    secTools: "Alatan",
+    secApp: "Aplikasi",
+    secGeneral: "Umum",
+    secScan: "Imbasan",
+    languageShort: "Bahasa",
+    importFiles: "Import fail",
+    storageNote: "{n} fail, kira-kira {size}. Fail disimpan di telefon ini sahaja, jadi buat sandaran sebelum tukar telefon.",
     checkUpdate: "Semak kemas kini",
     curVer: "Versi dipasang",
     latestVer: "Versi terkini",

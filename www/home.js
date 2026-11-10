@@ -21,25 +21,30 @@ function drawerOpen() { return $('#drawer').classList.contains('on'); }
 function closeDrawer() { $('#drawer').classList.remove('on'); $('#drawer-bg').classList.remove('on'); }
 function openDrawer() {
   const cnt = (f) => live().filter((d) => (d.folder || '') === f).length;
-  const row = (k, icon, label, right, on) => `<button class="dr-row ${on ? 'on' : ''}" data-k="${esc(k)}">${icon}<span>${esc(label)}</span>${right != null ? `<span class="r">${esc(right)}</span>` : ''}</button>`;
-  let h = `<div class="dr-head"><div class="dr-brand"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /><div class="dr-logo">YourScanner</div></div><div class="dr-ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div></div>`;
-  h += row('settings', I.gear, t('settings'));
-  h += '<div class="dr-sep"></div>';
+  const row = (k, icon, label, right, on) => `<button class="dr-row ${on ? 'on' : ''}" data-k="${esc(k)}">${icon}<span class="lb">${esc(label)}</span>${right != null && right !== '' ? `<span class="r">${esc(right)}</span>` : ''}</button>`;
+  const sec = (label) => `<div class="dr-sec">${esc(label)}</div>`;
+  let h = `<div class="dr-head">
+      <img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" />
+      <div class="dr-title"><div class="dr-logo">YourScanner</div><div class="dr-ver">${esc(t('version'))} ${esc(APP_VER || '1.0')}</div></div>
+    </div><div class="dr-body">`;
+  h += sec(t('secFolders'));
   h += row('__all', I.docs, t('myDocs'), live().length, curFolder === '__all');
   if (DB.folders.length) h += row('__none', I.folder, t('uncat'), cnt(''), curFolder === '');
   DB.folders.forEach((f) => { h += row('f:' + f, I.folder, f, cnt(f), curFolder === f); });
+  h += row('__trash', I.trash, t('trash'), trashed().length || null, curFolder === '__trash');
   h += row('newfolder', I.plus, t('newFolder'));
   if (DB.folders.length) h += row('managefolders', I.edit, t('manageFolders'));
-  h += '<div class="dr-sep"></div>';
-  h += row('importpdf', I.docs, t('importPdf'));
+  h += sec(t('secTools'));
+  h += row('importpdf', I.upload, t('importFiles'));
   h += row('backup', I.backup, t('backupRestore'));
-  h += row('__trash', I.trash, `${t('trash')} (${trashed().length})`, null, curFolder === '__trash');
-  h += '<div class="dr-sep"></div>';
+  h += row('settings', I.gear, t('settings'));
+  h += sec(t('secApp'));
   h += row('update', I.download, t('checkUpdate'));
   h += row('help', I.help, t('help'));
   h += row('about', I.info, t('about'));
+  h += '</div>';
   $('#drawer').innerHTML = h;
-  $$('#drawer .dr-row').forEach((b) => b.addEventListener('click', () => drawerPick(b.dataset.k)));
+  $$('#drawer [data-k]').forEach((b) => b.addEventListener('click', () => drawerPick(b.dataset.k)));
   $('#drawer-bg').classList.add('on');
   $('#drawer').classList.add('on');
 }
@@ -563,16 +568,21 @@ async function settingsSheet() {
   const s = DB.settings;
   const total = live().reduce((a, d) => a + docSize(d), 0);
   const langName = s.lang && s.lang !== 'auto' ? LANGS[s.lang] : t('langAuto');
-  const v = await actionSheet(t('settings'), [
-    { icon: I.globe, label: t('language'), right: langName, value: 'lang' },
+  const v = await openSheet(settingsHtml([
+    { sec: t('secGeneral') },
+    { icon: I.globe, label: t('languageShort'), right: langName, value: 'lang' },
     { icon: I.moon, label: t('theme'), right: t(THEMES[s.theme || 'auto']), value: 'theme' },
+    { sec: t('secScan') },
     { icon: I.ocr, label: t('scanMode'), right: t(SCAN_MODES[s.scanMode || 'FULL']), value: 'scanmode' },
-    { label: t('defQuality'), right: t(QUALITY[s.quality].n), value: 'q' },
-    { label: t('defPaper'), right: t(PAPER[s.paper]), value: 'p' },
-    { label: t('prefix'), right: (s.prefix || '').trim() || t('defaultPrefix'), value: 'n' },
-    { label: t('manageFolders'), right: String(DB.folders.length), value: 'f' },
-    { label: t('about'), value: 'about' },
-  ], t('setSummary', { n: live().length, size: fmtSize(total) }));
+    { icon: I.edit, label: t('prefix'), right: (s.prefix || '').trim() || t('defaultPrefix'), value: 'n' },
+    { sec: 'PDF' },
+    { icon: I.sliders, label: t('defQuality'), right: t(QUALITY[s.quality].n), value: 'q' },
+    { icon: I.docs, label: t('defPaper'), right: t(PAPER[s.paper]), value: 'p' },
+    { sec: t('secFolders') },
+    { icon: I.folder, label: t('manageFolders'), right: String(DB.folders.length), value: 'f' },
+  ], t('storageNote', { n: live().length, size: fmtSize(total) })), (sh) => {
+    $$('.set-row', sh).forEach((b) => b.addEventListener('click', () => closeSheet(b.dataset.v)));
+  });
   if (v === 'scanmode') {
     const cur = s.scanMode || 'FULL';
     const k = await actionSheet(t('scanMode'), Object.entries(SCAN_MODES).map(([k, n]) => ({ label: t(n), value: k, on: k === cur, right: k === cur ? '✓' : t(n + 'D') })), t('scanModeHint'));
@@ -605,8 +615,6 @@ async function settingsSheet() {
     if (n) { s.prefix = n; await saveDB(); toast(t('newNameToast', { name: defaultName() })); }
   } else if (v === 'f') {
     manageFolders();
-  } else if (v === 'about') {
-    await aboutSheet();
   }
 }
 
@@ -718,4 +726,23 @@ function updateSheet() {
       $('#up-msg', sh).textContent = !latest ? '' : verNum(latest) > verNum(cur) ? t('updateAvail') : t('upToDate');
     }).catch(() => { if ($('#up-latest', sh)) { $('#up-latest', sh).textContent = '—'; $('#up-msg', sh).textContent = t('noNetwork'); } });
   });
+}
+
+/** 设置页：分组 + 图标 + 右边的值和箭头，底部是存储说明 */
+function settingsHtml(items, note) {
+  const chev = '<svg class="chev" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>';
+  let h = `<h3>${esc(t('settings'))}</h3>`;
+  let open = false;
+  for (const it of items) {
+    if (it.sec) {
+      if (open) h += '</div>';
+      h += `<div class="set-sec">${esc(it.sec)}</div><div class="set-group">`;
+      open = true;
+      continue;
+    }
+    h += `<button class="set-row" data-v="${esc(it.value)}">${it.icon || ''}<span class="lb">${esc(it.label)}</span><span class="r">${esc(it.right || '')}</span>${chev}</button>`;
+  }
+  if (open) h += '</div>';
+  h += `<div class="set-note">${I.save}<span>${esc(note)}</span></div>`;
+  return h;
 }
