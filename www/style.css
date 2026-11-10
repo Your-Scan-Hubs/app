@@ -236,6 +236,28 @@ body.trash-mode .actionbar { display: none; }
 .sliders em { font-style: normal; text-align: right; color: var(--ink); font-size: 12.5px; }
 .ghostpill { background: transparent; border: 1.5px solid #22D35B; color: #22D35B; padding: 6px 14px; font-size: 13.5px; }
 
+/* 选择模式 */
+.selbar { display: none; justify-content: space-around; }
+#v-doc.selecting .docbar { display: none; }
+#v-doc.selecting .selbar { display: flex; }
+#v-doc.selecting #doc-pdf, #v-doc.selecting #doc-menu { visibility: hidden; }
+.pcard.sel { outline: 3px solid #14B8A6; outline-offset: -1px; }
+.pfoot .chk { margin-left: auto; width: 18px; height: 18px; border: 1.6px solid var(--ink2); border-radius: 3px; display: grid; place-items: center; flex: none; }
+.pcard.sel .chk { background: #14B8A6; border-color: #14B8A6; color: #fff; }
+.pfoot .chk svg { width: 14px; height: 14px; stroke-width: 3; }
+
+/* 拼图 */
+#cl-canvas { background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.5); }
+.cl-note { text-align: center; font-size: 12.5px; color: #9AA0A6; min-height: 18px; padding: 2px 12px; background: var(--bar); }
+.okbtn svg { color: #22D35B; width: 28px; height: 28px; }
+.layouts { display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px calc(10px + var(--safe-b)); background: var(--bar); border-top: 1px solid var(--line); scrollbar-width: none; flex: none; }
+.layouts::-webkit-scrollbar { display: none; }
+.layouts button { flex: none; min-width: 62px; padding: 7px 6px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink2); }
+.layouts button.on { background: #14B8A6; color: #fff; }
+.lic { width: 20px; height: 26px; display: grid; gap: 2px; padding: 2px; border: 1.5px solid currentColor; border-radius: 2px; }
+.lic b { background: currentColor; opacity: .55; border-radius: 1px; }
+.lic.id { grid-template-rows: 1fr 1fr; gap: 3px; padding: 3px 4px; }
+
 /* 弹层里的小标题 / PDF 设置 */
 .opt-label { font-size: 12.5px; color: var(--ink3); margin: 12px 0 7px; }
 .sheet .seg { margin-bottom: 2px; }

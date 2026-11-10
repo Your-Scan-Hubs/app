@@ -54,6 +54,26 @@
       <button class="tb" id="doc-share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg><span data-i18n="share"></span></button>
       <button class="tb" id="doc-more"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg><span data-i18n="more"></span></button>
     </nav>
+    <nav class="actionbar selbar">
+      <button class="tb" id="sel-all"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg><span data-i18n="selectAll"></span></button>
+      <button class="tb" id="sel-del"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg><span data-i18n="del"></span></button>
+      <button class="tb" id="sel-copy"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span data-i18n="copyPages"></span></button>
+      <button class="tb" id="sel-collage"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg><span data-i18n="collage"></span></button>
+      <button class="tb" id="sel-share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg><span data-i18n="share"></span></button>
+    </nav>
+  </section>
+
+  <!-- ========== 拼图 ========== -->
+  <section id="v-collage" class="view darkview">
+    <header class="top home-top">
+      <button class="icon-btn" id="cl-back" aria-label="back"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+      <h2 data-i18n="collage"></h2>
+      <button class="icon-btn okbtn" id="cl-ok" aria-label="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+    </header>
+    <div class="stage fstage" id="cl-stage"><canvas id="cl-canvas"></canvas></div>
+    <div class="cl-note" id="cl-note"></div>
+    <div class="sliders"><label><span data-i18n="size"></span><input type="range" id="cl-scale" min="30" max="100" step="1" value="100" /><em id="cl-sv">100%</em></label></div>
+    <div class="layouts" id="cl-layouts"></div>
   </section>
 
   <!-- ========== 单页（左右滑） ========== -->

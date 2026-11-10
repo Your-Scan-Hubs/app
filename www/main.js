@@ -39,6 +39,7 @@ function goBack() {
   if (sheetOpen()) return closeSheet(null);
   if (drawerOpen()) return closeDrawer();
   if (VIEW === 'crop' || VIEW === 'filter') { FL = null; return closeCrop(); }
+  if (VIEW === 'collage') return closeCollage();
   if (VIEW === 'page') return pageBack();
   if (VIEW === 'doc') return docBack();
   if (SHARE_MODE) return finishShare();

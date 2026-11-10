@@ -4,6 +4,15 @@ const LANGS = { zh: '中文', en: 'English', ms: 'Bahasa Melayu' };
 
 const STR = {
   zh: {
+    nSelected: "{n} 已选择",
+    selectAll: "全选",
+    copyPages: "复制",
+    collage: "拼图",
+    size: "大小",
+    delPagesQ: "删除选中的 {n} 页？",
+    collageExtra: "这个排版放不下，有 {n} 页没放进去",
+    idRealSize: "ID Card：按身份证实际大小（85.6 × 54 mm），打印选 100% 就是原大",
+    collageDone: "拼图已生成新文件，可以直接打印或分享",
     unsupportedFile: "有 {n} 个文件暂时不能转（Word、Excel、PPT 等）。请先用 WPS 另存为 PDF，再分享到 YourScan。",
     importPdf: "导入文件（PDF / 图片）",
     readingPdf: "正在读取文件…",
@@ -147,6 +156,15 @@ const STR = {
   },
 
   en: {
+    nSelected: "{n} selected",
+    selectAll: "Select all",
+    copyPages: "Copy",
+    collage: "Collage",
+    size: "Size",
+    delPagesQ: "Delete {n} selected pages?",
+    collageExtra: "This layout doesn't fit {n} page(s)",
+    idRealSize: "ID Card: actual card size (85.6 × 54 mm). Print at 100% for real size",
+    collageDone: "Collage saved as a new file, ready to print or share",
     unsupportedFile: "{n} file(s) can’t be converted yet (Word, Excel, PPT, etc.). Save them as PDF in WPS first, then share to YourScan.",
     importPdf: "Import file (PDF / images)",
     readingPdf: "Reading file…",
@@ -290,6 +308,15 @@ const STR = {
   },
 
   ms: {
+    nSelected: "{n} dipilih",
+    selectAll: "Pilih semua",
+    copyPages: "Salin",
+    collage: "Kolaj",
+    size: "Saiz",
+    delPagesQ: "Padam {n} halaman yang dipilih?",
+    collageExtra: "Susun atur ini tidak muat {n} halaman",
+    idRealSize: "ID Card: saiz sebenar kad (85.6 × 54 mm). Cetak pada 100% untuk saiz sebenar",
+    collageDone: "Kolaj disimpan sebagai fail baharu, sedia untuk cetak atau kongsi",
     unsupportedFile: "{n} fail belum boleh ditukar (Word, Excel, PPT, dll.). Simpan sebagai PDF dalam WPS dahulu, kemudian kongsi ke YourScan.",
     importPdf: "Import fail (PDF / imej)",
     readingPdf: "Membaca fail…",

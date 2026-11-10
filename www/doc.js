@@ -310,34 +310,258 @@ function openDoc(id) {
   show('doc');
 }
 
+let SEL = null; // 选择模式：选中的页面 id
+
 function renderDoc() {
   const d = curDoc();
   if (!d) return;
-  $('#doc-title').textContent = d.name;
+  if (SEL) SEL = new Set([...SEL].filter((id) => d.pages.some((p) => p.id === id)));
+  $('#doc-title').textContent = SEL ? t('nSelected', { n: SEL.size }) : d.name;
+  $('#v-doc').classList.toggle('selecting', !!SEL);
   const box = $('#doc-pages');
   box.innerHTML = d.pages.map((p, i) => `
-    <div class="pcard" data-id="${p.id}">
+    <div class="pcard ${SEL && SEL.has(p.id) ? 'sel' : ''}" data-id="${p.id}">
       <div class="pimg"><img loading="lazy" src="${store.url(pagePath(d, p.t))}" style="filter:${pcss(p)}" alt="" /></div>
-      <div class="pfoot"><span class="pno">${pad2(i + 1)}</span><span class="pmeta">${fmtDate(p.created || d.created)}, ${fmtSize(p.size)}</span></div>
+      <div class="pfoot"><span class="pno">${pad2(i + 1)}</span><span class="pmeta">${fmtDate(p.created || d.created)}, ${fmtSize(p.size)}</span>${SEL ? `<span class="chk">${SEL.has(p.id) ? I.check : ''}</span>` : ''}</div>
     </div>`).join('');
-  $$('.pcard', box).forEach((el) => el.addEventListener('click', () => {
-    openPage(d.pages.findIndex((p) => p.id === el.dataset.id));
-  }));
-  if (docSortable) docSortable.destroy();
-  docSortable = new Sortable(box, {
-    animation: 160, delay: 260, delayOnTouchOnly: true, touchStartThreshold: 6,
-    ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
-    onEnd: async (e) => {
-      if (e.oldIndex === e.newIndex) return;
-      const order = $$('.pcard', box).map((el) => el.dataset.id);
-      d.pages.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-      await touch(d);
-      renderDoc();
-    },
+  $$('.pcard', box).forEach((el) => {
+    let timer = null, sx = 0, sy = 0, long = false;
+    el.addEventListener('pointerdown', (e) => {
+      long = false; sx = e.clientX; sy = e.clientY;
+      if (SEL) return;
+      timer = setTimeout(() => { long = true; SEL = new Set([el.dataset.id]); if (navigator.vibrate) navigator.vibrate(20); renderDoc(); }, 480);
+    });
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    el.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
+    el.addEventListener('pointerup', cancel);
+    el.addEventListener('pointercancel', cancel);
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    el.addEventListener('click', () => {
+      if (long) return;
+      if (SEL) {
+        const id = el.dataset.id;
+        if (SEL.has(id)) SEL.delete(id); else SEL.add(id);
+        if (!SEL.size) SEL = null;
+        return renderDoc();
+      }
+      openPage(d.pages.findIndex((p) => p.id === el.dataset.id));
+    });
+  });
+  if (docSortable) { docSortable.destroy(); docSortable = null; }
+  if (SEL) {
+    // 选择模式下长按拖动可以排序
+    docSortable = new Sortable(box, {
+      animation: 160, delay: 300, delayOnTouchOnly: true, touchStartThreshold: 6,
+      ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
+      onEnd: async (e) => {
+        if (e.oldIndex === e.newIndex) return;
+        const order = $$('.pcard', box).map((el) => el.dataset.id);
+        d.pages.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        await touch(d);
+        renderDoc();
+      },
+    });
+  }
+}
+
+const selPages = () => { const d = curDoc(); return d ? d.pages.filter((p) => SEL && SEL.has(p.id)) : []; };
+function exitSel() { SEL = null; renderDoc(); }
+
+async function selDelete() {
+  const d = curDoc();
+  const ps = selPages();
+  if (!ps.length) return;
+  if (ps.length === d.pages.length) {
+    if (!(await confirmSheet(t('delLastPageQ'), t('delLastPageD'), t('del'), true))) return;
+    SEL = null;
+    await trashDoc(d);
+    DOC = null; show('home'); renderHome();
+    return;
+  }
+  if (!(await confirmSheet(t('delPagesQ', { n: ps.length }), '', t('del'), true))) return;
+  d.pages = d.pages.filter((p) => !SEL.has(p.id));
+  for (const p of ps) await removePageFiles(d, p);
+  await touch(d);
+  SEL = null;
+  renderDoc();
+  toast(t('deleted'));
+}
+
+async function selCopy() {
+  const d = curDoc();
+  const ps = selPages();
+  busy(t('duplicating'));
+  try {
+    for (const p of ps) {
+      const np = JSON.parse(JSON.stringify(p));
+      np.id = uid();
+      const map = {};
+      for (const f of new Set([p.o, p.f, p.t])) {
+        const nf = f.slice(0, 2) + uid() + '.jpg';
+        map[f] = nf;
+        await store.write(pagePath(d, nf), await store.read(pagePath(d, f)));
+      }
+      np.o = map[p.o]; np.f = map[p.f]; np.t = map[p.t];
+      d.pages.splice(d.pages.indexOf(ps[ps.length - 1]) + 1 + ps.indexOf(p), 0, np);
+    }
+    await touch(d);
+    toast(t('dupDone'));
+  } catch (e) { toast(t('dupFail')); }
+  busy(false);
+  SEL = null;
+  renderDoc();
+}
+
+$('#sel-all').addEventListener('click', () => {
+  const d = curDoc();
+  SEL = SEL && SEL.size === d.pages.length ? new Set() : new Set(d.pages.map((p) => p.id));
+  if (!SEL.size) SEL = null;
+  renderDoc();
+});
+$('#sel-del').addEventListener('click', selDelete);
+$('#sel-copy').addEventListener('click', selCopy);
+$('#sel-share').addEventListener('click', () => { const d = curDoc(); const ps = selPages(); if (ps.length) shareImages(d, ps); });
+$('#sel-collage').addEventListener('click', () => { const ps = selPages(); if (ps.length) openCollage(ps); });
+
+/* =========================================================
+   拼图：几页合成一张 A4（IC 正反面用 ID Card 实际尺寸）
+   ========================================================= */
+const LAYOUTS = [
+  { k: 'id', n: 'ID Card' },
+  { k: '1x2', c: 1, r: 2 }, { k: '2x1', c: 2, r: 1 },
+  { k: '1x3', c: 1, r: 3 }, { k: '3x1', c: 3, r: 1 },
+  { k: '2x2', c: 2, r: 2 }, { k: '2x3', c: 2, r: 3 }, { k: '3x2', c: 3, r: 2 },
+  { k: '3x3', c: 3, r: 3 }, { k: '3x4', c: 3, r: 4 }, { k: '4x3', c: 4, r: 3 },
+];
+let CL = null;
+
+async function openCollage(pages) {
+  const d = curDoc();
+  busy(t('loading'));
+  try {
+    const imgs = [];
+    for (const p of pages) {
+      const bmp = await decode(await store.read(pagePath(d, p.f)));
+      imgs.push({ bmp, css: pcss(p) });
+    }
+    const n = imgs.length;
+    const def = n <= 2 ? 'id' : n === 3 ? '1x3' : n === 4 ? '2x2' : n <= 6 ? '2x3' : n <= 9 ? '3x3' : '3x4';
+    CL = { imgs, layout: def, scale: 100 };
+  } catch (e) { busy(false); return toast(t('readFail')); }
+  busy(false);
+  $('#cl-layouts').innerHTML = LAYOUTS.map((L) => {
+    const icon = L.k === 'id'
+      ? '<i class="lic id"><b></b><b></b></i>'
+      : `<i class="lic" style="grid-template-columns:repeat(${L.c},1fr);grid-template-rows:repeat(${L.r},1fr)">${'<b></b>'.repeat(L.c * L.r)}</i>`;
+    return `<button data-k="${L.k}">${icon}<span>${L.n || L.k.replace('x', ' x ')}</span></button>`;
+  }).join('');
+  $$('#cl-layouts button').forEach((b) => b.addEventListener('click', () => { CL.layout = b.dataset.k; clDraw(); }));
+  $('#cl-scale').value = 100;
+  show('collage');
+  requestAnimationFrame(() => {
+    clDraw();
+    const on = $('#cl-layouts button.on');
+    if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' });
   });
 }
 
+/** 在 A4 画布上排好图片；返回放不下的数量 */
+function drawCollage(ctx, W, H, imgs, layoutKey, scalePct) {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+  const mm = W / 210;
+  const sc = scalePct / 100;
+  const L = LAYOUTS.find((x) => x.k === layoutKey) || LAYOUTS[0];
+  const place = (img, x, y, w, h, fit) => {
+    // fit=true：等比例放进框里；false：铺满框（ID Card 用）
+    const iw = img.bmp.width, ih = img.bmp.height;
+    let dw = w, dh = h;
+    if (fit) { const s = Math.min(w / iw, h / ih); dw = iw * s; dh = ih * s; }
+    ctx.save();
+    if (img.css && img.css !== 'none') ctx.filter = img.css;
+    ctx.drawImage(img.bmp, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    ctx.restore();
+  };
+  if (L.k === 'id') {
+    // 身份证真实尺寸 85.6 × 54 mm，上下排，整组置中
+    const boxes = imgs.map((im) => {
+      const portrait = im.bmp.height > im.bmp.width;
+      return portrait ? [54 * mm * sc, 85.6 * mm * sc] : [85.6 * mm * sc, 54 * mm * sc];
+    });
+    const gap = 14 * mm * sc;
+    let total = boxes.reduce((a, b) => a + b[1], 0) + gap * (boxes.length - 1);
+    let k = 1;
+    if (total > H - 20 * mm) { k = (H - 20 * mm) / total; total *= k; }
+    let y = (H - total) / 2;
+    imgs.forEach((im, i) => {
+      const [bw, bh] = [boxes[i][0] * k, boxes[i][1] * k];
+      const ar = im.bmp.width / im.bmp.height, br = bw / bh;
+      // 比例接近卡片就铺满，差太多就等比例放
+      place(im, (W - bw) / 2, y, bw, bh, Math.abs(ar - br) / br > 0.12);
+      y += bh + gap * k;
+    });
+    return 0;
+  }
+  const M = 10 * mm, G = 5 * mm;
+  const cw = (W - M * 2 - G * (L.c - 1)) / L.c;
+  const ch = (H - M * 2 - G * (L.r - 1)) / L.r;
+  const cells = L.c * L.r;
+  imgs.slice(0, cells).forEach((im, i) => {
+    const col = i % L.c, row = Math.floor(i / L.c);
+    const w = cw * sc, h = ch * sc;
+    place(im, M + col * (cw + G) + (cw - w) / 2, M + row * (ch + G) + (ch - h) / 2, w, h, true);
+  });
+  return Math.max(0, imgs.length - cells);
+}
+
+function clDraw() {
+  if (!CL) return;
+  $$('#cl-layouts button').forEach((b) => b.classList.toggle('on', b.dataset.k === CL.layout));
+  $('#cl-sv').textContent = CL.scale + '%';
+  const cv = $('#cl-canvas');
+  const st = $('#cl-stage').getBoundingClientRect();
+  const ratio = 297 / 210;
+  let h = st.height - 20, w = h / ratio;
+  if (w > st.width - 20) { w = st.width - 20; h = w * ratio; }
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  const extra = drawCollage(cv.getContext('2d'), cv.width, cv.height, CL.imgs, CL.layout, CL.scale);
+  $('#cl-note').textContent = extra ? t('collageExtra', { n: extra }) : CL.layout === 'id' && CL.scale === 100 ? t('idRealSize') : '';
+}
+$('#cl-scale').addEventListener('input', (e) => { CL.scale = +e.target.value; clDraw(); });
+window.addEventListener('resize', () => { if (VIEW === 'collage') clDraw(); });
+
+function closeCollage() {
+  if (CL) CL.imgs.forEach((im) => freeBmp(im.bmp));
+  CL = null;
+  show('doc');
+}
+$('#cl-back').addEventListener('click', closeCollage);
+
+async function collageApply() {
+  const d = curDoc();
+  busy(t('processing'));
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = 2480; cv.height = 3508; // A4 300dpi
+    drawCollage(cv.getContext('2d'), cv.width, cv.height, CL.imgs, CL.layout, CL.scale);
+    const blob = await cvBlob(cv, 0.92);
+    freeCv(cv);
+    busy(false);
+    closeCollage();
+    SEL = null;
+    const nd = await newDocFrom([blob], { name: `${d.name} ${t('collage')}` });
+    if (nd) { nd.pdfOpts.paper = 'a4'; await saveDB(); toast(t('collageDone'), 3500); }
+  } catch (e) {
+    busy(false);
+    toast(t('saveFail') + (e.message || e));
+  }
+}
+$('#cl-ok').addEventListener('click', collageApply);
+
 function docBack() {
+  if (SEL) return exitSel();
   const d = curDoc();
   DOC = null;
   if (SHARE_MODE) return finishShare();
