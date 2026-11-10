@@ -172,7 +172,7 @@ function webStore() {
 const store = NATIVE ? nativeStore() : webStore();
 
 /* ---------- 索引（文件列表/文件夹/设置） ---------- */
-let DB = { v: 1, docs: [], folders: [], settings: { quality: 'std', paper: 'a4', prefix: '', lang: 'auto' } };
+let DB = { v: 1, docs: [], folders: [], settings: { quality: 'std', paper: 'a4', prefix: '', lang: 'en' } };
 async function loadDB() {
   const t = await store.readText('index.json');
   if (t) {

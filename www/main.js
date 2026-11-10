@@ -55,10 +55,12 @@ if (AppP) {
 }
 
 (async function boot() {
-  setLang(null);
+  setLang('en');
   try {
     await store.init();
     await loadDB();
+    // 英文优先：旧设定“跟随手机”改成英文（之后可以在右上角切换）
+    if (!DB.settings.langSet) { DB.settings.lang = DB.settings.lang && DB.settings.lang !== 'auto' && DB.settings.lang !== 'zh' ? DB.settings.lang : 'en'; DB.settings.langSet = 1; await saveDB(); }
     if (migrate()) await saveDB();
     applyTheme();
   } catch (e) {

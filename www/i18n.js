@@ -1,6 +1,7 @@
 'use strict';
 /* 三语言：中文 / English / Bahasa Melayu */
-const LANGS = { zh: '中文', en: 'English', ms: 'Bahasa Melayu' };
+const LANGS = { en: 'English', ms: 'Bahasa Melayu', zh: '中文' };
+const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
@@ -266,7 +267,7 @@ const STR = {
     skippedN: "{n} already here, skipped",
     restoreFail: "Restore failed: ",
     helpHtml: "<ul><li><b>Scan</b>: tap the camera button and point at a document. Edges are found automatically, and you can scan several pages.</li><li><b>Photos to PDF</b>: tap the photo button and pick several photos to make one PDF.</li><li><b>Reorder</b>: in the editor, long-press a page and drag it. Tap a page to rotate, filter or delete it.</li><li><b>Share in</b>: pick images in Gallery or WhatsApp → Share → YourScan.</li><li><b>Search</b>: tap 🔍 to search file names and the text inside files.</li><li><b>Folders</b>: tap ☰ at the top left to switch or create folders.</li><li><b>Delete</b>: deleted files go to the recycle bin and are removed for good after 30 days.</li><li><b>New phone</b>: use Backup / Restore to take your files with you.</li></ul>",
-    myDocs: 'My documents',
+    myDocs: 'Documents',
     searchPh: 'Search file names or text in files',
     emptyNone: 'No files yet<br/>Tap a button below to start scanning',
     emptySearch: 'No matching files<br/>Try other keywords',
@@ -433,7 +434,7 @@ const STR = {
     skippedN: "{n} sudah ada, dilangkau",
     restoreFail: "Gagal memulihkan: ",
     helpHtml: "<ul><li><b>Imbas</b>: tekan butang kamera dan halakan ke dokumen. Tepi dikesan secara automatik dan anda boleh imbas beberapa halaman.</li><li><b>Foto ke PDF</b>: tekan butang foto dan pilih beberapa foto untuk dijadikan satu PDF.</li><li><b>Susun</b>: dalam penyunting, tekan lama halaman dan seret. Ketik halaman untuk putar, tapis atau padam.</li><li><b>Kongsi masuk</b>: pilih imej dalam Galeri atau WhatsApp → Kongsi → YourScan.</li><li><b>Cari</b>: tekan 🔍 untuk cari nama fail dan teks dalam fail.</li><li><b>Folder</b>: tekan ☰ di kiri atas untuk tukar atau buat folder.</li><li><b>Padam</b>: fail yang dipadam masuk ke tong kitar semula dan dibuang selepas 30 hari.</li><li><b>Telefon baharu</b>: gunakan Sandaran / Pulihkan untuk membawa fail anda.</li></ul>",
-    myDocs: 'Dokumen saya',
+    myDocs: 'Dokumen',
     searchPh: 'Cari nama fail atau teks dalam fail',
     emptyNone: 'Belum ada fail<br/>Tekan butang di bawah untuk mula mengimbas',
     emptySearch: 'Tiada fail yang sepadan<br/>Cuba kata kunci lain',
@@ -505,7 +506,7 @@ const STR = {
   },
 };
 
-let LANG = 'zh';
+let LANG = 'en';
 function detectLang() {
   const l = (navigator.language || '').toLowerCase();
   if (l.startsWith('zh')) return 'zh';

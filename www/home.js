@@ -571,7 +571,8 @@ async function settingsSheet() {
     if (k) { s.theme = k; await saveDB(); applyTheme(); }
     return;
   }
-  if (v === 'lang') {
+  if (v === 'lang') { return langMenu(); }
+  if (v === 'lang_old') {
     const cur = s.lang || 'auto';
     const k = await actionSheet(t('language'), [['auto', t('langAuto')], ...Object.entries(LANGS)].map(([k, n]) => ({ label: n, value: k, on: k === cur, right: k === cur ? '✓' : null })));
     if (!k) return;
@@ -598,8 +599,20 @@ async function settingsSheet() {
 /** 切换语言后刷新所有文字 */
 function applyLang() {
   setLang(DB.settings.lang === 'auto' ? null : DB.settings.lang);
+  $('#btn-lang').textContent = LANG_SHORT[LANG] || 'EN';
   if (VIEW === 'home') renderHome();
   else if (VIEW === 'doc' && DOC) renderDoc();
 }
 $('#btn-settings').addEventListener('click', homeMenu);
 
+
+/* ---------- 右上角语言切换 ---------- */
+async function langMenu() {
+  const cur = DB.settings.lang || 'en';
+  const k = await actionSheet('Language / Bahasa / 语言', [...Object.entries(LANGS), ['auto', t('langAuto')]].map(([k, n]) => ({ label: n, value: k, on: k === cur, right: k === cur ? '✓' : (LANG_SHORT[k] || null) })));
+  if (!k) return;
+  DB.settings.lang = k;
+  await saveDB();
+  applyLang();
+}
+$('#btn-lang').addEventListener('click', langMenu);
