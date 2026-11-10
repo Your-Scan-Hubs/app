@@ -245,6 +245,9 @@ body.trash-mode .actionbar { display: none; }
 .hselbar { display: none; justify-content: space-around; }
 #v-home.selecting .mainbar { display: none; }
 #v-home.selecting .hselbar { display: flex; }
+.tselbar { display: none; justify-content: space-around; }
+#v-home.selecting.in-trash .hselbar { display: none; }
+#v-home.selecting.in-trash .tselbar { display: flex; }
 #v-home.selecting #btn-search, #v-home.selecting #btn-settings { visibility: hidden; }
 .doc.sel .hchk { color: #fff; }
 #btn-menu .ic-close { display: none; }

@@ -5,6 +5,14 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    scanMode: "扫描画面",
+    scanModeHint: "拍照扫描时 Google 扫描器的功能多少。画面文字跟着手机系统语言。",
+    smFull: "完整",
+    smFullD: "美化、滤镜、橡皮擦、裁剪",
+    smFilter: "简洁",
+    smFilterD: "只有滤镜和裁剪",
+    smBase: "最简单",
+    smBaseD: "只有裁剪和旋转",
     delFilesQ: "删除 {n} 份文件？",
     trashNote: "会先移到回收站，30 天内可以还原。",
     autoCrop: "自动裁边",
@@ -179,6 +187,14 @@ const STR = {
   },
 
   en: {
+    scanMode: "Scanner screen",
+    scanModeHint: "How many tools the Google scanner shows when you scan. Its text follows the phone’s system language.",
+    smFull: "Full",
+    smFullD: "Enhance, filters, eraser, crop",
+    smFilter: "Simple",
+    smFilterD: "Filters and crop only",
+    smBase: "Basic",
+    smBaseD: "Crop and rotate only",
     delFilesQ: "Delete {n} files?",
     trashNote: "They go to the recycle bin and can be restored within 30 days.",
     batchTitle1: "Process 1 image",
@@ -354,6 +370,14 @@ const STR = {
   },
 
   ms: {
+    scanMode: "Skrin pengimbas",
+    scanModeHint: "Berapa banyak alat yang ditunjukkan oleh pengimbas Google. Teksnya ikut bahasa sistem telefon.",
+    smFull: "Penuh",
+    smFullD: "Tingkatkan, penapis, pemadam, potong",
+    smFilter: "Ringkas",
+    smFilterD: "Penapis dan potong sahaja",
+    smBase: "Asas",
+    smBaseD: "Potong dan putar sahaja",
     delFilesQ: "Padam {n} fail?",
     trashNote: "Fail akan dipindah ke tong kitar semula dan boleh dipulihkan dalam 30 hari.",
     autoCrop: "Potong automatik",

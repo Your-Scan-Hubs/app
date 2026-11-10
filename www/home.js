@@ -150,9 +150,9 @@ function sortDocs(arr, inTrash) {
 function renderHome() {
   if (!['__all', '__trash', ''].includes(curFolder) && !DB.folders.includes(curFolder)) curFolder = '__all';
   const inTrash = curFolder === '__trash';
-  if (inTrash) HSEL = null;
   document.body.classList.toggle('trash-mode', inTrash);
   $('#v-home').classList.toggle('selecting', !!HSEL);
+  $('#v-home').classList.toggle('in-trash', inTrash);
   const toks = query.toLowerCase().split(/\s+/).filter(Boolean);
   const list = sortDocs((inTrash ? trashed() : live())
     .filter((d) => inTrash || curFolder === '__all' || (d.folder || '') === curFolder)
@@ -176,7 +176,7 @@ function renderHome() {
     let timer = null, sx = 0, sy = 0, long = false;
     row.addEventListener('pointerdown', (e) => {
       long = false; sx = e.clientX; sy = e.clientY;
-      if (HSEL || inTrash) return;
+      if (HSEL) return;
       timer = setTimeout(() => { long = true; HSEL = [d.id]; if (navigator.vibrate) navigator.vibrate(20); renderHome(); }, 480);
     });
     const cancel = () => { clearTimeout(timer); timer = null; };
@@ -336,6 +336,7 @@ $('#hs-share').addEventListener('click', async () => {
 });
 
 /* ---------- 外观：跟随手机 / 日间 / 夜间 ---------- */
+const SCAN_MODES = { FULL: 'smFull', BASE_WITH_FILTER: 'smFilter', BASE: 'smBase' };
 const THEMES = { auto: 'langAuto', light: 'themeLight', dark: 'themeDark' };
 const darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 function applyTheme() {
@@ -433,7 +434,7 @@ async function getScan() {
   }
   try {
     await ensureScannerModule();
-    const r = await Scanner.scanDocument({ galleryImportAllowed: true, pageLimit: 50, resultFormats: 'JPEG', scannerMode: 'FULL' });
+    const r = await Scanner.scanDocument({ galleryImportAllowed: true, pageLimit: 50, resultFormats: 'JPEG', scannerMode: DB.settings.scanMode || 'FULL' });
     const uris = (r && r.scannedImages) || [];
     if (!uris.length) return null;
     // 扫描结果已经是手机里的文件，直接交给原生处理（不经过网页，快）
@@ -561,12 +562,19 @@ async function settingsSheet() {
   const v = await actionSheet(t('settings'), [
     { icon: I.globe, label: t('language'), right: langName, value: 'lang' },
     { icon: I.moon, label: t('theme'), right: t(THEMES[s.theme || 'auto']), value: 'theme' },
+    { icon: I.ocr, label: t('scanMode'), right: t(SCAN_MODES[s.scanMode || 'FULL']), value: 'scanmode' },
     { label: t('defQuality'), right: t(QUALITY[s.quality].n), value: 'q' },
     { label: t('defPaper'), right: t(PAPER[s.paper]), value: 'p' },
     { label: t('prefix'), right: (s.prefix || '').trim() || t('defaultPrefix'), value: 'n' },
     { label: t('manageFolders'), right: String(DB.folders.length), value: 'f' },
     { label: t('about'), value: 'about' },
   ], t('setSummary', { n: live().length, size: fmtSize(total) }));
+  if (v === 'scanmode') {
+    const cur = s.scanMode || 'FULL';
+    const k = await actionSheet(t('scanMode'), Object.entries(SCAN_MODES).map(([k, n]) => ({ label: t(n), value: k, on: k === cur, right: k === cur ? '✓' : t(n + 'D') })), t('scanModeHint'));
+    if (k) { s.scanMode = k; await saveDB(); toast(t('setTo', { name: t(SCAN_MODES[k]) })); }
+    return;
+  }
   if (v === 'theme') {
     const cur = s.theme || 'auto';
     const k = await actionSheet(t('theme'), Object.entries(THEMES).map(([k, n]) => ({ label: t(n), value: k, on: k === cur, right: k === cur ? '✓' : null })));
@@ -618,3 +626,45 @@ async function langMenu() {
   applyLang();
 }
 $('#btn-lang').addEventListener('click', langMenu);
+
+/* ---------- 回收站多选：还原 / 永久删除 ---------- */
+$('#ts-all').addEventListener('click', hselAll);
+$('#ts-restore').addEventListener('click', async () => {
+  const ds = hselDocs();
+  if (!ds.length) return;
+  ds.forEach((d) => delete d.trashed);
+  await saveDB();
+  toast(t('restored'));
+  exitHomeSel();
+});
+$('#ts-del').addEventListener('click', async () => {
+  const ds = hselDocs();
+  if (!ds.length) return;
+  if (!(await confirmSheet(t('emptyTrashQ', { n: ds.length }), t('delD'), t('del'), true))) return;
+  for (const d of ds) await purgeDoc(d);
+  await saveDB();
+  toast(t('deleted'));
+  exitHomeSel();
+});
+
+/* ---------- 手势：首页往右滑打开菜单，菜单往左滑关掉 ---------- */
+(function swipeDrawer() {
+  let sx = 0, sy = 0, st = 0, on = false;
+  const start = (e) => { const p = e.touches[0]; sx = p.clientX; sy = p.clientY; st = Date.now(); on = true; };
+  const end = (open) => (e) => {
+    if (!on) return;
+    on = false;
+    const p = e.changedTouches[0];
+    const dx = p.clientX - sx, dy = p.clientY - sy;
+    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - st > 700) return;
+    if (open && dx > 0 && VIEW === 'home' && !HSEL && !sheetOpen() && !drawerOpen()) openDrawer();
+    if (!open && dx < 0 && drawerOpen()) closeDrawer();
+  };
+  const home = $('#v-home');
+  home.addEventListener('touchstart', start, { passive: true });
+  home.addEventListener('touchend', end(true), { passive: true });
+  for (const el of [$('#drawer'), $('#drawer-bg')]) {
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchend', end(false), { passive: true });
+  }
+})();
