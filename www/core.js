@@ -491,3 +491,20 @@ function defaultName() {
 }
 const safeName = (s) => (s || 'YourScanner').replace(/[\\/:*?"<>|\n\r\t]+/g, '_').replace(/^\.+/, '').slice(0, 80).trim() || 'YourScanner';
 
+
+/* 底部弹层往下滑关掉 */
+(function sheetSwipe() {
+  const sh = $('#sheet');
+  let sy = 0, sx = 0, ok = false;
+  sh.addEventListener('touchstart', (e) => {
+    const p = e.touches[0];
+    ok = sh.scrollTop <= 0 && !(e.target.closest && e.target.closest('textarea, input, .seg, .layouts, .ftabs'));
+    sy = p.clientY; sx = p.clientX;
+  }, { passive: true });
+  sh.addEventListener('touchend', (e) => {
+    if (!ok) return;
+    const p = e.changedTouches[0];
+    const dy = p.clientY - sy, dx = Math.abs(p.clientX - sx);
+    if (dy > 90 && dy > dx * 1.5) closeSheet(null);
+  }, { passive: true });
+})();
