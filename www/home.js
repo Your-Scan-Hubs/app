@@ -267,6 +267,8 @@ $('#hs-more').addEventListener('click', hselMore);
 $('#hs-del').addEventListener('click', async () => {
   const ds = hselDocs();
   if (!ds.length) return;
+  const q = ds.length === 1 ? t('delQ', { name: ds[0].name }) : t('delFilesQ', { n: ds.length });
+  if (!(await confirmSheet(q, t('trashNote'), t('del'), true))) return;
   for (const d of ds) d.trashed = Date.now();
   await saveDB();
   toast(t('movedToTrash'));

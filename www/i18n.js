@@ -5,6 +5,8 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    delFilesQ: "删除 {n} 份文件？",
+    trashNote: "会先移到回收站，30 天内可以还原。",
     autoCrop: "自动裁边",
     autoCropHint: "自动找出纸张或卡片的四个角并拉正",
     autoCropping: "正在自动裁边 {i} / {n}",
@@ -177,6 +179,8 @@ const STR = {
   },
 
   en: {
+    delFilesQ: "Delete {n} files?",
+    trashNote: "They go to the recycle bin and can be restored within 30 days.",
     batchTitle1: "Process 1 image",
     autoCrop: "Auto crop",
     autoCropHint: "Find the paper or card edges and straighten them",
@@ -350,6 +354,8 @@ const STR = {
   },
 
   ms: {
+    delFilesQ: "Padam {n} fail?",
+    trashNote: "Fail akan dipindah ke tong kitar semula dan boleh dipulihkan dalam 30 hari.",
     autoCrop: "Potong automatik",
     autoCropHint: "Cari tepi kertas atau kad dan luruskan",
     autoCropping: "Memotong automatik {i} / {n}",

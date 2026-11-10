@@ -1349,6 +1349,7 @@ async function docMenu(d, fromHome) {
     return;
   }
   if (v === 'del') {
+    if (!(await confirmSheet(t('delQ', { name: d.name }), t('trashNote'), t('del'), true))) return;
     await trashDoc(d);
     if (fromHome) renderHome();
     else { DOC = null; show('home'); renderHome(); }
