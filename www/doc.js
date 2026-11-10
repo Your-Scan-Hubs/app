@@ -86,6 +86,130 @@ async function removePageFiles(d, p) {
   for (const f of new Set([p.o, p.f, p.t])) if (f) await store.del(pagePath(d, f));
 }
 
+/* =========================================================
+   导入 PDF：每一页转成图片
+   ========================================================= */
+let pdfjsReady = null;
+function loadPdfJs() {
+  if (!pdfjsReady) {
+    pdfjsReady = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/pdf.min.js';
+      s.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+        res(window.pdfjsLib);
+      };
+      s.onerror = () => { pdfjsReady = null; rej(new Error('pdf.js')); };
+      document.head.appendChild(s);
+    });
+  }
+  return pdfjsReady;
+}
+
+const isPdf = (blob, name) => (blob && /pdf/i.test(blob.type || '')) || /\.pdf$/i.test(name || '');
+
+/** PDF → 每页一张 JPEG */
+async function pdfToBlobs(blob) {
+  const lib = await loadPdfJs();
+  const data = new Uint8Array(await blob.arrayBuffer());
+  const pdf = await lib.getDocument({ data, cMapUrl: 'vendor/cmaps/', cMapPacked: true, standardFontDataUrl: 'vendor/standard_fonts/' }).promise;
+  const out = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    busy(t('pdfPageN', { i, n: pdf.numPages }));
+    const page = await pdf.getPage(i);
+    const v1 = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 2200 / Math.max(v1.width, v1.height));
+    const vp = page.getViewport({ scale });
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    out.push(await cvBlob(cv, 0.9));
+    freeCv(cv);
+    page.cleanup();
+  }
+  await pdf.destroy();
+  return out;
+}
+
+const isText = (blob, name) => /^text\/plain/i.test((blob && blob.type) || '') || /\.(txt|csv|log|md)$/i.test(name || '');
+const isImage = (blob, name) => /^image\//i.test((blob && blob.type) || '') || /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif|tiff?)$/i.test(name || '');
+
+/** 文字文件排成 A4 页面 */
+async function textToBlobs(blob) {
+  const text = (await blob.text()).replace(/\r\n?/g, '\n');
+  const W = 1240, H = 1754, M = 100, fs = 30, lh = 46;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.font = `${fs}px sans-serif`;
+  const lines = [];
+  for (const para of text.split('\n')) {
+    if (!para) { lines.push(''); continue; }
+    let cur = '';
+    for (const ch of para) {
+      if (ctx.measureText(cur + ch).width > W - M * 2) { lines.push(cur); cur = ch; }
+      else cur += ch;
+    }
+    lines.push(cur);
+  }
+  const per = Math.floor((H - M * 2) / lh);
+  const out = [];
+  for (let i = 0; i < Math.max(1, lines.length); i += per) {
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#111'; ctx.font = `${fs}px sans-serif`; ctx.textBaseline = 'top';
+    lines.slice(i, i + per).forEach((l, k) => ctx.fillText(l, M, M + k * lh));
+    out.push(await cvBlob(cv, 0.9));
+  }
+  freeCv(cv);
+  return out;
+}
+
+/** 收到的文件（图片 / PDF / 文字 / 其他）全部展开成页面图片 */
+async function expandFiles(items) {
+  const blobs = [];
+  let docName = null, bad = 0, unsupported = 0;
+  const nameOf = (it) => String(it.name || '').replace(/\.[a-z0-9]{1,5}$/i, '');
+  for (const it of items) {
+    try {
+      if (isPdf(it.blob, it.name)) {
+        blobs.push(...(await pdfToBlobs(it.blob)));
+        if (!docName && it.name) docName = nameOf(it);
+      } else if (isText(it.blob, it.name)) {
+        blobs.push(...(await textToBlobs(it.blob)));
+        if (!docName && it.name) docName = nameOf(it);
+      } else if (isImage(it.blob, it.name) || !it.name || !/\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|zip|rar|7z|apk|mp4|mov|mp3|m4a|wav)$/i.test(it.name)) {
+        blobs.push(it.blob); // 图片（或未知类型，先当图片试）
+      } else unsupported++;
+    } catch (e) { bad++; }
+  }
+  busy(false);
+  if (unsupported) toast(t('unsupportedFile', { n: unsupported }), 6000);
+  else if (bad) toast(t('pdfFail'), 4000);
+  return { blobs, pdfName: docName };
+}
+
+function pickPdf() {
+  return new Promise((res) => {
+    const inp = $('#pdf-input');
+    inp.value = '';
+    inp.onchange = () => res(inp.files && inp.files.length ? [...inp.files] : null);
+    inp.click();
+  });
+}
+
+async function importPdfFile() {
+  const fs = await pickPdf();
+  if (!fs) return;
+  busy(t('readingPdf'));
+  const items = fs.map((f) => ({ blob: f, name: f.name }));
+  const onlyImages = items.every((it) => isImage(it.blob, it.name));
+  const { blobs, pdfName } = await expandFiles(items);
+  if (blobs.length) await newDocFrom(blobs, { ask: onlyImages, name: onlyImages ? null : pdfName });
+}
+
 /* ---------- 批量导入对话框（选好相册图片后） ---------- */
 function batchDialog(n) {
   let filter = 'none';
@@ -105,7 +229,7 @@ function batchDialog(n) {
 }
 
 /** 新建文件（扫描结果直接用；相册图片先问滤镜） */
-async function newDocFrom(blobs, { ask = false } = {}) {
+async function newDocFrom(blobs, { ask = false, name = null } = {}) {
   if (!blobs || !blobs.length) return;
   let filter = 'none';
   if (ask) {
@@ -118,7 +242,7 @@ async function newDocFrom(blobs, { ask = false } = {}) {
   if (!pages.length) { await store.rmdir('docs/' + id); if (SHARE_MODE) finishShare(); return; }
   const now = Date.now();
   const d = {
-    id, name: defaultName(),
+    id, name: (name && name.trim()) || defaultName(),
     folder: !['__all', '__trash'].includes(curFolder) ? curFolder : '',
     created: now, updated: now, pages,
     pdf: null, pdfDirty: true, pdfSize: 0,

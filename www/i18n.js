@@ -4,6 +4,11 @@ const LANGS = { zh: '中文', en: 'English', ms: 'Bahasa Melayu' };
 
 const STR = {
   zh: {
+    unsupportedFile: "有 {n} 个文件暂时不能转（Word、Excel、PPT 等）。请先用 WPS 另存为 PDF，再分享到 YourScan。",
+    importPdf: "导入文件（PDF / 图片）",
+    readingPdf: "正在读取文件…",
+    pdfPageN: "正在转换 PDF 第 {i} / {n} 页",
+    pdfFail: "有 PDF 打不开（可能有密码或已损坏）",
     loadingN: "加载中… {i} / {n}",
     batchTitle: "批量处理 {n} 张图片",
     batchHint: "选一个滤镜，导入后每一页还可以单独调整。",
@@ -142,6 +147,11 @@ const STR = {
   },
 
   en: {
+    unsupportedFile: "{n} file(s) can’t be converted yet (Word, Excel, PPT, etc.). Save them as PDF in WPS first, then share to YourScan.",
+    importPdf: "Import file (PDF / images)",
+    readingPdf: "Reading file…",
+    pdfPageN: "Converting PDF page {i} / {n}",
+    pdfFail: "A PDF couldn’t be opened (it may be password-protected or damaged)",
     loadingN: "Loading… {i} / {n}",
     batchTitle: "Process {n} images",
     batchHint: "Pick a filter. You can still adjust each page afterwards.",
@@ -280,6 +290,11 @@ const STR = {
   },
 
   ms: {
+    unsupportedFile: "{n} fail belum boleh ditukar (Word, Excel, PPT, dll.). Simpan sebagai PDF dalam WPS dahulu, kemudian kongsi ke YourScan.",
+    importPdf: "Import fail (PDF / imej)",
+    readingPdf: "Membaca fail…",
+    pdfPageN: "Menukar halaman PDF {i} / {n}",
+    pdfFail: "PDF tidak dapat dibuka (mungkin berkata laluan atau rosak)",
     loadingN: "Memuat… {i} / {n}",
     batchTitle: "Proses {n} imej",
     batchHint: "Pilih penapis. Setiap halaman masih boleh dilaras selepas itu.",

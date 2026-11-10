@@ -226,6 +226,14 @@ async function decode(blob) {
       img.src = url;
       await img.decode();
       return img;
+    } catch (e2) {
+      // 网页读不了的格式（例如 HEIC）：交给手机系统转成 JPEG
+      if (!NATIVE || !YsNative) throw e2;
+      const tmp = await store.blobToShare('conv_' + uid(), blob);
+      const r = await YsNative.toJpeg({ path: tmp });
+      const jb = await (await fetch(C.convertFileSrc(r.path))).blob();
+      try { await FS.deleteFile({ path: r.path }); } catch (e3) {}
+      return await createImageBitmap(jb);
     } finally {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }

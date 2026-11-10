@@ -5,6 +5,9 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.ImageDecoder;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
@@ -165,6 +168,54 @@ public class YsNativePlugin extends Plugin {
             } catch (Exception e) {
                 callback.onWriteFailed(e.getMessage());
             }
+        }
+    }
+
+    /** 系统能读的任何图片（HEIC 等）转成 JPEG，最长边 2480 */
+    @PluginMethod
+    public void toJpeg(PluginCall call) {
+        File src = fileFrom(call.getString("path"));
+        if (src == null || !src.exists()) {
+            call.reject("文件不存在");
+            return;
+        }
+        try {
+            Bitmap bmp;
+            final int max = 2480;
+            if (Build.VERSION.SDK_INT >= 28) {
+                bmp = ImageDecoder.decodeBitmap(ImageDecoder.createSource(src), (decoder, info, source) -> {
+                    decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                    int w = info.getSize().getWidth(), h = info.getSize().getHeight();
+                    int m = Math.max(w, h);
+                    if (m > max) {
+                        float sc = (float) max / m;
+                        decoder.setTargetSize(Math.max(1, Math.round(w * sc)), Math.max(1, Math.round(h * sc)));
+                    }
+                });
+            } else {
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(src.getAbsolutePath(), o);
+                int sample = 1;
+                while (Math.max(o.outWidth, o.outHeight) / sample > max * 2) sample *= 2;
+                BitmapFactory.Options o2 = new BitmapFactory.Options();
+                o2.inSampleSize = sample;
+                bmp = BitmapFactory.decodeFile(src.getAbsolutePath(), o2);
+            }
+            if (bmp == null) {
+                call.reject("无法读取图片");
+                return;
+            }
+            File out = new File(getContext().getCacheDir(), "conv_" + System.currentTimeMillis() + ".jpg");
+            try (OutputStream os = new FileOutputStream(out)) {
+                bmp.compress(Bitmap.CompressFormat.JPEG, 92, os);
+            }
+            bmp.recycle();
+            JSObject r = new JSObject();
+            r.put("path", Uri.fromFile(out).toString());
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : "无法读取图片");
         }
     }
 

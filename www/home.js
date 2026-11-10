@@ -31,6 +31,7 @@ function openDrawer() {
   h += row('newfolder', I.plus, t('newFolder'));
   if (DB.folders.length) h += row('managefolders', I.edit, t('manageFolders'));
   h += '<div class="dr-sep"></div>';
+  h += row('importpdf', I.docs, t('importPdf'));
   h += row('backup', I.backup, t('backupRestore'));
   h += row('__trash', I.trash, `${t('trash')} (${trashed().length})`, null, curFolder === '__trash');
   h += '<div class="dr-sep"></div>';
@@ -49,6 +50,7 @@ async function drawerPick(k) {
   if (k === 'settings') return settingsSheet();
   if (k === 'managefolders') return manageFolders();
   if (k === 'backup') return backupSheet();
+  if (k === 'importpdf') return importPdfFile();
   if (k === 'help') return actionSheet(t('help'), [{ label: t('gotIt'), value: 'ok' }], '', t('helpHtml'));
   if (k === 'about') return actionSheet('YourScan', [{ label: t('gotIt'), value: 'ok' }], `${t('version')} ${APP_VER || '1.0'} · ${t('aboutText')}`, '<div class="about-logo"><img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" /></div>');
   if (k === 'newfolder') {
