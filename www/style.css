@@ -236,6 +236,22 @@ body.trash-mode .actionbar { display: none; }
 .sliders em { font-style: normal; text-align: right; color: var(--ink); font-size: 12.5px; }
 .ghostpill { background: transparent; border: 1.5px solid #22D35B; color: #22D35B; padding: 6px 14px; font-size: 13.5px; }
 
+/* 首页选择模式 */
+.hselbar { display: none; justify-content: space-around; }
+#v-home.selecting .mainbar { display: none; }
+#v-home.selecting .hselbar { display: flex; }
+#v-home.selecting #btn-search, #v-home.selecting #btn-settings { visibility: hidden; }
+.doc.sel .hchk { color: #fff; }
+#btn-menu .ic-close { display: none; }
+#v-home.selecting #btn-menu .ic-menu { display: none; }
+#v-home.selecting #btn-menu .ic-close { display: block; }
+.doc.sel { background: var(--accent-soft); }
+.hchk { flex: none; width: 26px; height: 26px; margin: 0 12px; border: 2px solid var(--ink3); border-radius: 4px; display: grid; place-items: center; }
+.hchk svg { width: 20px; height: 20px; stroke-width: 3; }
+.doc.sel .hchk { background: #14B8A6; border-color: #14B8A6; color: #fff; }
+html.dark .sheet .btns button.primary { background: var(--accent); color: #fff; }
+html.dark .sheet .btns button.danger { background: var(--danger); color: #fff; }
+
 /* 选择模式 */
 .selbar { display: none; justify-content: space-around; }
 #v-doc.selecting .docbar { display: none; }
@@ -273,19 +289,19 @@ body.trash-mode .actionbar { display: none; }
 .empty-logo { width: 120px; height: 120px; border-radius: 28px; margin-bottom: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 
 /* 夜间模式（跟随手机） */
-@media (prefers-color-scheme: dark) {
-  .lg-l { display: none; }
-  .lg-d { display: inline-block; }
-  :root {
+/* 夜间模式（html.dark：跟随手机或手动选择） */
+html.dark .lg-l { display: none; }
+html.dark .lg-d { display: inline-block; }
+html.dark {
     --bg: #000000; --card: #141414; --ink: #F2F2F2; --ink2: #A7A7A7; --ink3: #6E6E6E;
     --line: #262626; --accent: #4D7CFF; --accent-soft: #1A2647;
     --bar: #1C1C1E; --press: #1A1A1A; --drawer: #2C2C2E; --drawer-head: #000000; --sq: #FFFFFF; --sq-ink: #000000; --field: #232325;
   }
-  .seg, .sheet .tools button, .sheet .btns button { background: var(--field); }
-  .seg button.on { background: #3A3A3C; color: #fff; }
-  .sheet input[type=text], .sheet textarea { background: var(--field); color: var(--ink); }
-  .ghost { border-color: #3A3A3C; }
-  .busy { background: rgba(0,0,0,.8); }
-  .page, .dt-pages figure { border-color: #333; }
-  .doc .th { border-color: #333; }
-}
+html.dark .seg, html.dark .sheet .tools button, html.dark .sheet .btns button { background: var(--field); }
+html.dark .seg button.on { background: #3A3A3C; color: #fff; }
+html.dark .sheet input[type=text], html.dark .sheet textarea { background: var(--field); color: var(--ink); }
+html.dark .ghost { border-color: #3A3A3C; }
+html.dark .busy { background: rgba(0,0,0,.8); }
+html.dark .page, html.dark .dt-pages figure { border-color: #333; }
+html.dark .doc .th { border-color: #333; }
+

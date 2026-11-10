@@ -1,5 +1,6 @@
 package com.yourscanhubs.app;
 
+import android.app.Activity;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -25,12 +26,14 @@ import android.print.PrintDocumentInfo;
 import android.print.PrintManager;
 import android.provider.MediaStore;
 
+import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
@@ -39,6 +42,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 保存到相册 / 保存到“下载” / 打印 PDF / 发送邮件
@@ -224,6 +229,106 @@ public class YsNativePlugin extends Plugin {
         r.put("t", t.getName());
         r.put("size", o.length());
         return r;
+    }
+
+    /* ---------- 相册多选 + 直接存成页面（全部在原生层，最快） ---------- */
+    @PluginMethod
+    public void pickImages(PluginCall call) {
+        Intent intent;
+        if (Build.VERSION.SDK_INT >= 33) {
+            intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, MediaStore.getPickImagesMaxLimit());
+        } else {
+            intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("image/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        }
+        startActivityForResult(call, intent, "pickResult");
+    }
+
+    @ActivityCallback
+    private void pickResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        Intent data = result.getData();
+        if (result.getResultCode() != Activity.RESULT_OK || data == null) {
+            JSObject r = new JSObject();
+            r.put("pages", new JSArray());
+            r.put("cancelled", true);
+            call.resolve(r);
+            return;
+        }
+        final List<Uri> uris = new ArrayList<>();
+        if (data.getClipData() != null) {
+            ClipData cd = data.getClipData();
+            for (int i = 0; i < cd.getItemCount(); i++) uris.add(cd.getItemAt(i).getUri());
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        final File outDir = fileFrom(call.getString("outDir"));
+        final String prefix = call.getString("prefix", String.valueOf(System.currentTimeMillis()));
+        final int max = call.getInt("max", 2480);
+        final int thumbMax = call.getInt("thumbMax", 420);
+        if (outDir == null) {
+            call.reject("缺少 outDir");
+            return;
+        }
+        new Thread(() -> {
+            JSArray pages = new JSArray();
+            int bad = 0;
+            if (!outDir.exists()) outDir.mkdirs();
+            for (int i = 0; i < uris.size(); i++) {
+                JSObject ev = new JSObject();
+                ev.put("i", i + 1);
+                ev.put("n", uris.size());
+                notifyListeners("progress", ev);
+                try {
+                    Bitmap bmp = decodeUri(uris.get(i), max);
+                    if (bmp == null) { bad++; continue; }
+                    pages.put(writePage(bmp, outDir, prefix + "_" + i, thumbMax));
+                    bmp.recycle();
+                } catch (Exception e) {
+                    bad++;
+                }
+            }
+            JSObject r = new JSObject();
+            r.put("pages", pages);
+            r.put("bad", bad);
+            call.resolve(r);
+        }).start();
+    }
+
+    private Bitmap decodeUri(Uri uri, final int max) throws IOException {
+        ContentResolver cr = getContext().getContentResolver();
+        if (Build.VERSION.SDK_INT >= 28) {
+            return ImageDecoder.decodeBitmap(ImageDecoder.createSource(cr, uri), (decoder, info, source) -> {
+                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                int w = info.getSize().getWidth(), h = info.getSize().getHeight();
+                int m = Math.max(w, h);
+                if (m > max) {
+                    float sc = (float) max / m;
+                    decoder.setTargetSize(Math.max(1, Math.round(w * sc)), Math.max(1, Math.round(h * sc)));
+                }
+            });
+        }
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        try (InputStream in = cr.openInputStream(uri)) { BitmapFactory.decodeStream(in, null, o); }
+        int sample = 1;
+        while (Math.max(o.outWidth, o.outHeight) / sample > max * 2) sample *= 2;
+        BitmapFactory.Options o2 = new BitmapFactory.Options();
+        o2.inSampleSize = sample;
+        Bitmap b;
+        try (InputStream in = cr.openInputStream(uri)) { b = BitmapFactory.decodeStream(in, null, o2); }
+        if (b == null) return null;
+        int m = Math.max(b.getWidth(), b.getHeight());
+        if (m > max) {
+            float sc = (float) max / m;
+            Bitmap s2 = Bitmap.createScaledBitmap(b, Math.max(1, Math.round(b.getWidth() * sc)), Math.max(1, Math.round(b.getHeight() * sc)), true);
+            if (s2 != b) b.recycle();
+            b = s2;
+        }
+        return b;
     }
 
     /** 一张图片直接在原生层存成页面（比网页里处理快很多，也支持 HEIC） */

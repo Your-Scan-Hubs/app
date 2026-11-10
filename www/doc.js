@@ -81,7 +81,7 @@ async function buildPages(docId, items, filter) {
         if (NATIVE && YsNative && it.path) {
           try { p = mkPage(await YsNative.importImage({ path: it.path, outDir: dirUri, id: uid(), max: STORE_MAX, thumbMax: THUMB_MAX }), filter); } catch (e) {}
         }
-        if (!p) p = await importImage(docId, it.blob, filter);
+        if (!p) p = await importImage(docId, it.blob || await fetchUri(it.path), filter);
         pages.push(p);
       } else unsupported++;
     } catch (e) { bad++; }
@@ -246,6 +246,68 @@ function batchDialog(n) {
   });
 }
 
+/**
+ * 相册多选：手机上用原生选择器，选好直接存成页面（最快）。
+ * 返回 { pages } 或 null（取消）。浏览器 / 旧版本退回网页方式。
+ */
+async function pickGalleryPages(docId) {
+  if (NATIVE && YsNative) {
+    let h = null;
+    try {
+      h = await YsNative.addListener('progress', (e) => busy(t('loadingN', { i: e.i, n: e.n })));
+      const r = await YsNative.pickImages({ outDir: store.uri(`docs/${docId}`), prefix: uid(), max: STORE_MAX, thumbMax: THUMB_MAX });
+      busy(false);
+      if (r.bad) toast(t('badImgs', { n: r.bad }));
+      const pages = (r.pages || []).map((x) => mkPage(x, 'none'));
+      return pages.length ? { pages } : null;
+    } catch (e) {
+      busy(false);
+      if (!(e && (e.code === 'UNIMPLEMENTED' || /not implemented/i.test(e.message || '')))) { toast(t('readImgsFail')); return null; }
+    } finally { if (h) h.remove(); }
+  }
+  const blobs = await pickImages();
+  if (!blobs) return null;
+  return { blobs };
+}
+
+/** 选好滤镜后套到已经存好的页面上；取消就删掉 */
+async function askFilterFor(docId, pages, isNewDoc) {
+  const r = await batchDialog(pages.length);
+  if (!r) {
+    if (isNewDoc) await store.rmdir('docs/' + docId);
+    else for (const p of pages) await removePageFiles({ id: docId }, p);
+    return false;
+  }
+  pages.forEach((p) => { p.filter = r.filter; });
+  return true;
+}
+
+async function newDocFromGallery() {
+  const id = uid();
+  const got = await pickGalleryPages(id);
+  if (!got) { await store.rmdir('docs/' + id); return; }
+  if (got.blobs) return newDocFrom(got.blobs, { ask: true });
+  if (!(await askFilterFor(id, got.pages, true))) return;
+  await createDoc(id, got.pages, null);
+}
+
+/** 用已经准备好的页面建文件 */
+async function createDoc(id, pages, name) {
+  const now = Date.now();
+  const d = {
+    id, name: (name && name.trim()) || defaultName(),
+    folder: !['__all', '__trash'].includes(curFolder) ? curFolder : '',
+    created: now, updated: now, pages,
+    pdf: null, pdfDirty: true, pdfSize: 0,
+    pdfOpts: { paper: DB.settings.paper, quality: DB.settings.quality, wm: '' },
+  };
+  DB.docs.push(d);
+  await saveDB();
+  openDoc(id);
+  setTimeout(runOcrQueue, 1500);
+  return d;
+}
+
 /** 新建文件（扫描结果直接用；相册图片先问滤镜）。src：Blob 或 {blob, name, path} */
 async function newDocFrom(src, { ask = false, name = null } = {}) {
   if (!src || !src.length) return null;
@@ -263,33 +325,29 @@ async function newDocFrom(src, { ask = false, name = null } = {}) {
   const id = uid();
   const pages = await buildPages(id, items, filter);
   if (!pages.length) { await store.rmdir('docs/' + id); if (SHARE_MODE) setTimeout(finishShare, 3500); return null; }
-  const now = Date.now();
-  const d = {
-    id, name: (name && name.trim()) || defaultName(),
-    folder: !['__all', '__trash'].includes(curFolder) ? curFolder : '',
-    created: now, updated: now, pages,
-    pdf: null, pdfDirty: true, pdfSize: 0,
-    pdfOpts: { paper: DB.settings.paper, quality: DB.settings.quality, wm: '' },
-  };
-  DB.docs.push(d);
-  await saveDB();
-  openDoc(id);
-  setTimeout(runOcrQueue, 1500);
-  return d;
+  return createDoc(id, pages, name);
 }
 
 async function addPages(kind) {
   const d = curDoc();
   if (!d) return;
-  const blobs = kind === 'scan' ? await getScan() : await pickImages();
-  if (!blobs) return;
-  let filter = 'none';
-  if (kind !== 'scan') {
-    const r = await batchDialog(blobs.length);
-    if (!r) return;
-    filter = r.filter;
+  let pages = [];
+  if (kind === 'scan') {
+    const items = await getScan();
+    if (!items) return;
+    pages = await buildPages(d.id, items.map((b) => (b instanceof Blob ? { blob: b, name: b.name } : b)), 'none');
+  } else {
+    const got = await pickGalleryPages(d.id);
+    if (!got) return;
+    if (got.blobs) {
+      const r = await batchDialog(got.blobs.length);
+      if (!r) return;
+      pages = await buildPages(d.id, got.blobs.map((b) => ({ blob: b, name: b.name })), r.filter);
+    } else {
+      if (!(await askFilterFor(d.id, got.pages, false))) return;
+      pages = got.pages;
+    }
   }
-  const pages = await buildPages(d.id, blobs.map((b) => ({ blob: b, name: b.name })), filter);
   if (!pages.length) return;
   d.pages.push(...pages);
   await touch(d);
@@ -567,7 +625,6 @@ function docBack() {
   if (SHARE_MODE) return finishShare();
   show('home');
   renderHome();
-  if (d && d.pdfDirty) ensurePdf(d, true).then(() => { if (VIEW === 'home') renderHome(); }).catch(() => {});
 }
 
 $('#doc-back').addEventListener('click', docBack);
@@ -892,13 +949,21 @@ async function buildPdf(d, onProgress) {
   for (let i = 0; i < d.pages.length; i++) {
     if (onProgress) onProgress(i + 1, d.pages.length);
     const pg = d.pages[i];
-    const bmp = await decode(await store.read(pagePath(d, pg.f)));
-    const cv = toCanvas(bmp, { max: Q.max, css: pcss(pg), wm: (o.wm || '').trim() });
-    freeBmp(bmp);
-    const w = cv.width, h = cv.height;
-    const blob = await cvBlob(cv, Q.q);
-    freeCv(cv);
-    const img = await pdf.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+    const raw = await store.read(pagePath(d, pg.f));
+    let img = null, w, h;
+    // 没滤镜、没水印、画质选清晰：原图直接放进 PDF，不再重新压缩（快很多）
+    if (pcss(pg) === 'none' && !(o.wm || '').trim() && o.quality === 'hd') {
+      try { img = await pdf.embedJpg(new Uint8Array(await raw.arrayBuffer())); w = img.width; h = img.height; } catch (e) { img = null; }
+    }
+    if (!img) {
+      const bmp = await decode(raw);
+      const cv = toCanvas(bmp, { max: Q.max, css: pcss(pg), wm: (o.wm || '').trim() });
+      freeBmp(bmp);
+      w = cv.width; h = cv.height;
+      const blob = await cvBlob(cv, Q.q);
+      freeCv(cv);
+      img = await pdf.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+    }
     let pw, ph;
     if (o.paper === 'auto') { pw = A4[0]; ph = (A4[0] * h) / w; }
     else [pw, ph] = w > h ? [A4[1], A4[0]] : A4;

@@ -3,7 +3,7 @@
    入口按钮 / 返回键 / 分享进来 / 启动
    ========================================================= */
 $('#btn-scan').addEventListener('click', async () => newDocFrom(await getScan()));
-$('#btn-gallery').addEventListener('click', async () => newDocFrom(await pickImages(), { ask: true }));
+$('#btn-gallery').addEventListener('click', newDocFromGallery);
 
 function finishShare() {
   if (SendIntent) SendIntent.finish();
@@ -43,6 +43,7 @@ function goBack() {
   if (VIEW === 'page') return pageBack();
   if (VIEW === 'doc') return docBack();
   if (SHARE_MODE) return finishShare();
+  if (HSEL) return exitHomeSel();
   if (!$('#search-bar').hidden) return openSearch(false);
   if (curFolder !== '__all') { curFolder = '__all'; return renderHome(); }
   (AppP.minimizeApp ? AppP.minimizeApp() : AppP.exitApp()).catch(() => AppP.exitApp());
@@ -59,6 +60,7 @@ if (AppP) {
     await store.init();
     await loadDB();
     if (migrate()) await saveDB();
+    applyTheme();
   } catch (e) {
     toast(t('loadFail') + (e.message || e), 5000);
   }

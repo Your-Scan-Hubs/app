@@ -136,19 +136,32 @@ function matchDoc(d, toks) {
   return { ok: true };
 }
 
+let HSEL = null; // 首页选择模式：选中的文件 id（按点选顺序）
+
+const SORTS = { new: 'sortNew', old: 'sortOld', name: 'sortName' };
+function sortDocs(arr, inTrash) {
+  const k = DB.settings.sort || 'new';
+  const key = (d) => (inTrash ? d.trashed : d.updated);
+  if (k === 'old') return arr.sort((a, b) => key(a.d) - key(b.d));
+  if (k === 'name') return arr.sort((a, b) => a.d.name.localeCompare(b.d.name, undefined, { numeric: true }));
+  return arr.sort((a, b) => key(b.d) - key(a.d));
+}
+
 function renderHome() {
   if (!['__all', '__trash', ''].includes(curFolder) && !DB.folders.includes(curFolder)) curFolder = '__all';
   const inTrash = curFolder === '__trash';
+  if (inTrash) HSEL = null;
   document.body.classList.toggle('trash-mode', inTrash);
+  $('#v-home').classList.toggle('selecting', !!HSEL);
   const toks = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const list = (inTrash ? trashed() : live())
+  const list = sortDocs((inTrash ? trashed() : live())
     .filter((d) => inTrash || curFolder === '__all' || (d.folder || '') === curFolder)
     .map((d) => ({ d, m: matchDoc(d, toks) }))
-    .filter((x) => x.m.ok)
-    .sort((a, b) => b.d.updated - a.d.updated);
-  $('#home-title').textContent = `${folderTitle()} (${list.length})`;
+    .filter((x) => x.m.ok), inTrash);
+  if (HSEL) HSEL = HSEL.filter((id) => list.some((x) => x.d.id === id));
+  $('#home-title').textContent = HSEL ? t('nSelected', { n: HSEL.length }) : `${folderTitle()} (${list.length})`;
   $('#doc-list').innerHTML = list.map(({ d, m }) => `
-    <div class="doc" data-id="${d.id}">
+    <div class="doc ${HSEL && HSEL.includes(d.id) ? 'sel' : ''}" data-id="${d.id}">
       <div class="th">${d.pages[0] ? `<img loading="lazy" src="${store.url(`docs/${d.id}/${d.pages[0].t}`)}" style="filter:${pcss(d.pages[0])}" alt="" />` : ''}</div>
       <div class="info">
         <div class="nm">${esc(d.name)}</div>
@@ -156,12 +169,32 @@ function renderHome() {
         <div class="sub">${fmtDate(inTrash ? d.trashed : d.updated)}</div>
         ${m.hit ? `<div class="hit">${m.hit}</div>` : ''}
       </div>
-      <button class="icon-btn dots" aria-label="more"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+      ${HSEL ? `<span class="hchk">${HSEL.includes(d.id) ? I.check : ''}</span>` : `<button class="icon-btn dots" aria-label="more"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>`}
     </div>`).join('');
   $$('#doc-list .doc').forEach((row) => {
     const d = docById(row.dataset.id);
-    row.addEventListener('click', () => (inTrash ? trashRowMenu(d) : openDoc(d.id)));
-    $('.dots', row).addEventListener('click', (e) => {
+    let timer = null, sx = 0, sy = 0, long = false;
+    row.addEventListener('pointerdown', (e) => {
+      long = false; sx = e.clientX; sy = e.clientY;
+      if (HSEL || inTrash) return;
+      timer = setTimeout(() => { long = true; HSEL = [d.id]; if (navigator.vibrate) navigator.vibrate(20); renderHome(); }, 480);
+    });
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    row.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
+    row.addEventListener('pointerup', cancel);
+    row.addEventListener('pointercancel', cancel);
+    row.addEventListener('contextmenu', (e) => e.preventDefault());
+    row.addEventListener('click', () => {
+      if (long) return;
+      if (HSEL) {
+        HSEL = HSEL.includes(d.id) ? HSEL.filter((x) => x !== d.id) : [...HSEL, d.id];
+        if (!HSEL.length) HSEL = null;
+        return renderHome();
+      }
+      if (inTrash) trashRowMenu(d); else openDoc(d.id);
+    });
+    const dots = $('.dots', row);
+    if (dots) dots.addEventListener('click', (e) => {
       e.stopPropagation();
       if (inTrash) trashRowMenu(d); else docMenu(d, true);
     });
@@ -171,6 +204,146 @@ function renderHome() {
   if (empty) $('#empty-text').innerHTML = query ? t('emptySearch') : inTrash ? t('trashEmpty') : live().length ? t('emptyFolder') : t('emptyNone');
 }
 
+/* ---------- 首页右上角 ⋮：选择文件 / 排序 ---------- */
+async function homeMenu() {
+  if (curFolder === '__trash') return trashTopMenu();
+  const v = await actionSheet(null, [
+    { icon: I.check, label: t('selectFiles'), value: 'sel' },
+    { icon: I.sort, label: t('sortBy'), right: t(SORTS[DB.settings.sort || 'new']), value: 'sort' },
+  ]);
+  if (v === 'sel') { HSEL = []; renderHome(); toast(t('tapToSelect')); }
+  else if (v === 'sort') {
+    const cur = DB.settings.sort || 'new';
+    const k = await actionSheet(t('sortBy'), Object.entries(SORTS).map(([k, n]) => ({ label: t(n), value: k, on: k === cur, right: k === cur ? '✓' : null })));
+    if (k) { DB.settings.sort = k; await saveDB(); renderHome(); }
+  }
+}
+function exitHomeSel() { HSEL = null; renderHome(); }
+const hselDocs = () => (HSEL || []).map(docById).filter(Boolean);
+
+function hselAll() {
+  const ids = $$('#doc-list .doc').map((r) => r.dataset.id);
+  HSEL = HSEL && HSEL.length === ids.length ? [] : ids;
+  renderHome();
+}
+async function hselMore() {
+  const ds = hselDocs();
+  const v = await actionSheet(t('nSelected', { n: ds.length }), [
+    { icon: I.check, label: t('selectAll'), value: 'all' },
+    ...(ds.length === 1 ? [{ icon: I.edit, label: t('rename'), value: 'rename' }] : []),
+    ...(ds.length ? [{ icon: I.dup, label: t('duplicate'), value: 'dup' }, { icon: I.image, label: t('shareImg'), value: 'img' }] : []),
+  ]);
+  if (v === 'all') return hselAll();
+  if (v === 'rename') { await renameDoc(ds[0]); return exitHomeSel(); }
+  if (v === 'img') {
+    const pages = [];
+    for (const d of ds) {
+      const files = await renderPagesToFiles(d, d.pages);
+      pages.push(...files);
+    }
+    if (!NATIVE) return pages.forEach((f) => webDownload(f.url, f.name));
+    try { await ShareP.share({ files: pages.map((f) => f.uri), dialogTitle: t('shareImg') }); } catch (e) {}
+    return;
+  }
+  if (v === 'dup') {
+    busy(t('duplicating'));
+    try {
+      for (const d of ds) {
+        const nid = uid();
+        for (const f of docFiles(d)) await store.write(`docs/${nid}/${f}`, await store.read(`docs/${d.id}/${f}`));
+        const nd = JSON.parse(JSON.stringify(d));
+        Object.assign(nd, { id: nid, name: d.name + ' ' + t('copySuffix'), created: Date.now(), updated: Date.now(), pdfDirty: true });
+        if (nd.pdf) { await store.del(`docs/${nid}/${nd.pdf}`); nd.pdf = null; }
+        DB.docs.push(nd);
+      }
+      await saveDB();
+      toast(t('dupDone'));
+    } catch (e) { toast(t('dupFail')); }
+    busy(false);
+    exitHomeSel();
+  }
+}
+$('#hs-more').addEventListener('click', hselMore);
+$('#hs-del').addEventListener('click', async () => {
+  const ds = hselDocs();
+  if (!ds.length) return;
+  for (const d of ds) d.trashed = Date.now();
+  await saveDB();
+  toast(t('movedToTrash'));
+  exitHomeSel();
+});
+$('#hs-move').addEventListener('click', async () => {
+  const ds = hselDocs();
+  if (!ds.length) return;
+  const opts = [{ label: t('uncat'), value: '__none' }]
+    .concat(DB.folders.map((f) => ({ icon: I.folder, label: f, value: f })))
+    .concat({ icon: I.plus, label: t('newFolderOpt'), value: '__new' });
+  let f = await actionSheet(t('moveTitle'), opts);
+  if (f == null) return;
+  if (f === '__new') {
+    f = await promptSheet(t('newFolder'), '', t('folderPh'));
+    if (!f) return;
+    if (!DB.folders.includes(f)) DB.folders.push(f);
+  }
+  ds.forEach((d) => { d.folder = f === '__none' ? '' : f; });
+  await saveDB();
+  toast(f === '__none' ? t('movedUncat') : t('movedTo', { name: f }));
+  exitHomeSel();
+});
+$('#hs-merge').addEventListener('click', async () => {
+  const ds = hselDocs();
+  if (ds.length < 2) return toast(t('mergeNeed2'));
+  busy(t('merging'));
+  try {
+    const id = uid();
+    const pages = [];
+    for (const d of ds) {
+      for (const p of d.pages) {
+        const np = JSON.parse(JSON.stringify(p));
+        np.id = uid();
+        const map = {};
+        for (const f of new Set([p.o, p.f, p.t])) {
+          const nf = f.slice(0, 2) + uid() + '.jpg';
+          map[f] = nf;
+          await store.write(`docs/${id}/${nf}`, await store.read(`docs/${d.id}/${f}`));
+        }
+        np.o = map[p.o]; np.f = map[p.f]; np.t = map[p.t];
+        pages.push(np);
+      }
+    }
+    busy(false);
+    HSEL = null;
+    await createDoc(id, pages, `${ds[0].name} ${t('mergeSuffix')}`);
+    toast(t('mergeDone', { n: ds.length }), 3500);
+  } catch (e) { busy(false); toast(t('saveFail') + (e.message || e)); }
+});
+$('#hs-share').addEventListener('click', async () => {
+  const ds = hselDocs();
+  if (!ds.length) return;
+  try {
+    for (const d of ds) await ensurePdf(d);
+    if (!NATIVE) { ds.forEach((d) => webDownload(store.url(`docs/${d.id}/${d.pdf}`), d.pdf)); return; }
+    await store.clearShare();
+    const uris = [];
+    for (const d of ds) uris.push(await store.copyToShare(`docs/${d.id}/${d.pdf}`, d.pdf));
+    await ShareP.share({ files: uris, dialogTitle: t('sharePdf') });
+  } catch (e) {
+    busy(false);
+    if (!/cancel/i.test(e.message || '')) toast(t('shareFail') + (e.message || e), 4000);
+  }
+});
+
+/* ---------- 外观：跟随手机 / 日间 / 夜间 ---------- */
+const THEMES = { auto: 'langAuto', light: 'themeLight', dark: 'themeDark' };
+const darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function applyTheme() {
+  const pref = (DB.settings && DB.settings.theme) || 'auto';
+  const dark = pref === 'dark' || (pref === 'auto' && darkMq && darkMq.matches);
+  document.documentElement.classList.toggle('dark', !!dark);
+}
+if (darkMq && darkMq.addEventListener) darkMq.addEventListener('change', applyTheme);
+applyTheme();
+
 function openSearch(on) {
   $('#home-bar').hidden = on;
   $('#search-bar').hidden = !on;
@@ -179,7 +352,7 @@ function openSearch(on) {
 }
 $('#btn-search').addEventListener('click', () => openSearch(true));
 $('#search-close').addEventListener('click', () => openSearch(false));
-$('#btn-menu').addEventListener('click', openDrawer);
+$('#btn-menu').addEventListener('click', () => (HSEL ? exitHomeSel() : openDrawer()));
 $('#q').addEventListener('input', (e) => { query = e.target.value.trim(); renderHome(); });
 
 /* ---------- 文件夹管理 ---------- */
@@ -261,11 +434,8 @@ async function getScan() {
     const r = await Scanner.scanDocument({ galleryImportAllowed: true, pageLimit: 50, resultFormats: 'JPEG', scannerMode: 'FULL' });
     const uris = (r && r.scannedImages) || [];
     if (!uris.length) return null;
-    busy(t('readingScan'));
-    const blobs = [];
-    for (const u of uris) blobs.push(await fetchUri(u));
-    busy(false);
-    return blobs;
+    // 扫描结果已经是手机里的文件，直接交给原生处理（不经过网页，快）
+    return uris.map((u) => ({ path: u, name: 'scan.jpg' }));
   } catch (e) {
     busy(false);
     const msg = (e && (e.message || e.code)) || String(e);
@@ -388,12 +558,19 @@ async function settingsSheet() {
   const langName = s.lang && s.lang !== 'auto' ? LANGS[s.lang] : t('langAuto');
   const v = await actionSheet(t('settings'), [
     { icon: I.globe, label: t('language'), right: langName, value: 'lang' },
+    { icon: I.moon, label: t('theme'), right: t(THEMES[s.theme || 'auto']), value: 'theme' },
     { label: t('defQuality'), right: t(QUALITY[s.quality].n), value: 'q' },
     { label: t('defPaper'), right: t(PAPER[s.paper]), value: 'p' },
     { label: t('prefix'), right: (s.prefix || '').trim() || t('defaultPrefix'), value: 'n' },
     { label: t('manageFolders'), right: String(DB.folders.length), value: 'f' },
     { label: t('about'), value: 'about' },
   ], t('setSummary', { n: live().length, size: fmtSize(total) }));
+  if (v === 'theme') {
+    const cur = s.theme || 'auto';
+    const k = await actionSheet(t('theme'), Object.entries(THEMES).map(([k, n]) => ({ label: t(n), value: k, on: k === cur, right: k === cur ? '✓' : null })));
+    if (k) { s.theme = k; await saveDB(); applyTheme(); }
+    return;
+  }
   if (v === 'lang') {
     const cur = s.lang || 'auto';
     const k = await actionSheet(t('language'), [['auto', t('langAuto')], ...Object.entries(LANGS)].map(([k, n]) => ({ label: n, value: k, on: k === cur, right: k === cur ? '✓' : null })));
@@ -424,5 +601,5 @@ function applyLang() {
   if (VIEW === 'home') renderHome();
   else if (VIEW === 'doc' && DOC) renderDoc();
 }
-$('#btn-settings').addEventListener('click', () => (curFolder === '__trash' ? trashTopMenu() : settingsSheet()));
+$('#btn-settings').addEventListener('click', homeMenu);
 
