@@ -92,16 +92,12 @@ jobs:
           JAVA_DIR=android/app/src/main/java/com/yourscanhubs/app
           cp native/android/OcrPlugin.java native/android/YsNativePlugin.java native/android/MainActivity.java $JAVA_DIR/
 
-          # 4) 让 YourScan 出现在“分享”菜单里（接收一张或多张图片）
+          # 4) 分享进来直接在主程序打开（不另开窗口，原生转换和文字识别都能用）
           python3 - <<'PY'
+          import re
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p).read()
-          act = '''
-                  <activity
-                      android:name="de.mindlib.sendIntent.SendIntentActivity"
-                      android:label="@string/app_name"
-                      android:exported="true"
-                      android:theme="@style/AppTheme.NoActionBar">
+          filters = '''
                       <intent-filter>
                           <action android:name="android.intent.action.SEND" />
                           <category android:name="android.intent.category.DEFAULT" />
@@ -112,16 +108,20 @@ jobs:
                           <category android:name="android.intent.category.DEFAULT" />
                           <data android:mimeType="*/*" />
                       </intent-filter>
-                  </activity>
           '''
           meta = '''
                   <meta-data
                       android:name="com.google.mlkit.vision.DEPENDENCIES"
                       android:value="ocr_chinese" />
           '''
-          assert s.count('</application>') == 1
-          if 'SendIntentActivity' not in s:
-              s = s.replace('</application>', act + meta + '    </application>')
+          m = re.search(r'<activity[^>]*\.MainActivity[\s\S]*?</activity>', s)
+          assert m, 'MainActivity not found'
+          block = m.group(0)
+          if 'android.intent.action.SEND"' not in block:
+              block = block.replace('</activity>', filters + '        </activity>')
+              s = s[:m.start()] + block + s[m.end():]
+          if 'mlkit.vision.DEPENDENCIES' not in s:
+              s = s.replace('</application>', meta + '    </application>')
           open(p, 'w').write(s)
           print(s)
           PY

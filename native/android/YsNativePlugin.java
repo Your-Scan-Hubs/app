@@ -212,9 +212,13 @@ public class YsNativePlugin extends Plugin {
 
     /** 存一页：原图 o_ + 缩略图 t_，返回 {o, t, size} */
     private static JSObject writePage(Bitmap bmp, File outDir, String id, int thumbMax) throws IOException {
+        return writePage(bmp, outDir, id, thumbMax, 90);
+    }
+
+    private static JSObject writePage(Bitmap bmp, File outDir, String id, int thumbMax, int quality) throws IOException {
         File o = new File(outDir, "o_" + id + ".jpg");
         try (OutputStream os = new FileOutputStream(o)) {
-            bmp.compress(Bitmap.CompressFormat.JPEG, 90, os);
+            bmp.compress(Bitmap.CompressFormat.JPEG, quality, os);
         }
         int w = bmp.getWidth(), h = bmp.getHeight();
         float sc = Math.min(1f, (float) thumbMax / Math.max(w, h));
@@ -229,6 +233,15 @@ public class YsNativePlugin extends Plugin {
         r.put("t", t.getName());
         r.put("size", o.length());
         return r;
+    }
+
+    /** 分享处理完后清掉，免得下次回到 app 又导入一次 */
+    @PluginMethod
+    public void clearIntent(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            getActivity().setIntent(new Intent(Intent.ACTION_MAIN));
+            call.resolve();
+        });
     }
 
     /* ---------- 相册多选 + 直接存成页面（全部在原生层，最快） ---------- */
@@ -388,7 +401,7 @@ public class YsNativePlugin extends Plugin {
                         bmp.eraseColor(Color.WHITE);
                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
                     }
-                    pages.put(writePage(bmp, outDir, prefix + "_" + i, thumbMax));
+                    pages.put(writePage(bmp, outDir, prefix + "_" + i, thumbMax, 82));
                     bmp.recycle();
                     JSObject ev = new JSObject();
                     ev.put("i", i + 1);

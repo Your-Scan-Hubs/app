@@ -9,30 +9,43 @@ function finishShare() {
   if (SendIntent) SendIntent.finish();
 }
 
+let shareBusy = false;
+/** 别的 app 分享进来的文件：在主程序里直接建新文件 */
 async function checkShareIntent() {
-  if (!SendIntent) return;
+  if (!SendIntent || shareBusy) return;
   let r;
   try { r = await SendIntent.checkSendIntentReceived(); } catch (e) { return; }
   if (!r || !r.url) return;
-  const items = [r, ...(r.additionalItems || [])].filter((x) => x && x.url);
-  if (!items.length) return;
-  SHARE_MODE = true;
-  busy(t('readingImgs'));
-  const files = [];
-  for (const it of items) {
-    const u = decodeURIComponent(it.url);
-    try {
-      let blob = await fetchUri(u);
-      if (it.type && it.type.includes('/') && !it.type.includes('*') && it.type !== blob.type) blob = new Blob([blob], { type: it.type });
-      files.push({ blob, name: (it.title || u.split('/').pop() || '').trim(), path: u });
-    } catch (e) {}
+  shareBusy = true;
+  try {
+    if (YsNative) { try { await YsNative.clearIntent(); } catch (e) {} }
+    const items = [r, ...(r.additionalItems || [])].filter((x) => x && x.url);
+    if (!items.length) return;
+    closeSheet(null);
+    closeDrawer();
+    busy(t('readingImgs'));
+    const files = [];
+    for (const it of items) {
+      const u = decodeURIComponent(it.url);
+      try {
+        let blob = await fetchUri(u);
+        if (it.type && it.type.includes('/') && !it.type.includes('*') && it.type !== blob.type) blob = new Blob([blob], { type: it.type });
+        // 用真正的文件名（例如 BersihMax_A4.pdf），不用聊天附带的标题
+        const fileName = (u.split('/').pop() || '').trim();
+        const name = /\.[a-z0-9]{2,5}$/i.test(fileName) ? fileName : (it.title || fileName || '').trim();
+        files.push({ blob, name, path: u });
+      } catch (e) {}
+    }
+    busy(false);
+    if (!files.length) { toast(t('readImgsFail')); return; }
+    await newDocFrom(files, { ask: files.every((f) => isImage(f.blob, f.name)) });
+    for (const f of files) { try { await FS.deleteFile({ path: f.path }); } catch (e) {} }
+  } finally {
+    busy(false);
+    shareBusy = false;
   }
-  busy(false);
-  if (!files.length) { toast(t('readImgsFail')); return finishShare(); }
-  await newDocFrom(files, { ask: files.every((f) => isImage(f.blob, f.name)) });
-  // 转换完再删掉分享时复制进来的临时文件
-  for (const f of files) { try { await FS.deleteFile({ path: f.path }); } catch (e) {} }
 }
+window.addEventListener('ysShare', checkShareIntent);
 
 function goBack() {
   if (!$('#busy').hidden) return;
