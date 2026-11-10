@@ -306,6 +306,7 @@ $('#hs-merge').addEventListener('click', async () => {
   try {
     const id = uid();
     const pages = [];
+    const srcMap = {};
     for (const d of ds) {
       for (const p of d.pages) {
         const np = JSON.parse(JSON.stringify(p));
@@ -317,6 +318,14 @@ $('#hs-merge').addEventListener('click', async () => {
           await store.write(`docs/${id}/${nf}`, await store.read(`docs/${d.id}/${f}`));
         }
         np.o = map[p.o]; np.f = map[p.f]; np.t = map[p.t];
+        if (p.src && p.src.f) {
+          const key = d.id + '/' + p.src.f;
+          if (!srcMap[key]) {
+            srcMap[key] = 'src_' + uid() + '.pdf';
+            try { await store.write(`docs/${id}/${srcMap[key]}`, await store.read(`docs/${d.id}/${p.src.f}`)); } catch (e) { srcMap[key] = null; }
+          }
+          if (srcMap[key]) np.src = { f: srcMap[key], i: p.src.i }; else delete np.src;
+        }
         pages.push(np);
       }
     }
@@ -477,7 +486,7 @@ async function backupSheet() {
   if (v === 'r') return doRestore();
 }
 
-const docFiles = (d) => [...new Set([...d.pages.flatMap((p) => [p.o, p.f, p.t]), d.pdf].filter(Boolean))];
+const docFiles = (d) => [...new Set([...d.pages.flatMap((p) => [p.o, p.f, p.t, p.src && p.src.f]), d.pdf].filter(Boolean))];
 
 async function makeBackup() {
   const docs = live();

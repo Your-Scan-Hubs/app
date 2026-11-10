@@ -66,16 +66,20 @@ async function buildPages(docId, items, filter) {
             const path = it.path || await store.blobToShare('in_' + uid() + '.pdf', it.blob);
             h = await YsNative.addListener('progress', (e) => busy(pre + t('pdfPageN', { i: e.i, n: e.n })));
             const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 1800, thumbMax: THUMB_MAX });
-            (r.pages || []).forEach((x) => pages.push(mkPage(x, filter)));
+            const src = await keepSourcePdf(docId, path, it);
+            (r.pages || []).forEach((x, i) => { const p = mkPage(x, filter); if (src) p.src = { f: src, i }; pages.push(p); });
             done = true;
           } catch (e) { /* 系统打不开（例如有密码）就用网页方式再试 */ }
           finally { if (h) h.remove(); }
         }
         if (!done) {
           const bl = await pdfToBlobs(await getBlob());
+          const src = await keepSourcePdf(docId, null, it);
           for (let i = 0; i < bl.length; i++) {
             busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
-            pages.push(await importImage(docId, bl[i], filter));
+            const p = await importImage(docId, bl[i], filter);
+            if (src) p.src = { f: src, i };
+            pages.push(p);
           }
         }
       } else if (isText(kind, it.name)) {
@@ -95,6 +99,22 @@ async function buildPages(docId, items, filter) {
   if (bad && !unsupported) toast(t('badImgs', { n: bad }), 4000);
   return pages;
 }
+
+/** 保留原本的 PDF：没改过的页面导出时直接用原页（原档清晰度，向量文字） */
+async function keepSourcePdf(docId, path, it) {
+  const f = 'src_' + uid() + '.pdf';
+  try {
+    if (NATIVE && path) {
+      await FS.copy({ from: path, to: `docs/${docId}/${f}`, toDirectory: 'DATA' });
+    } else {
+      const b = it.blob || (it.path ? await fetchUri(it.path) : null);
+      if (!b) return null;
+      await store.write(`docs/${docId}/${f}`, b);
+    }
+    return f;
+  } catch (e) { return null; }
+}
+const untouched = (p) => !p.rot && isFullQuad(p.quad) && pcss(p) === 'none';
 
 /** 重新生成一页（旋转 + 四角裁切），原图保留可以随时重调 */
 async function processPage(d, p) {
@@ -1070,9 +1090,34 @@ async function buildPdf(d, onProgress) {
   pdf.setTitle(d.name);
   pdf.setCreator('YourScanner');
   pdf.setProducer('YourScanner');
+  const srcDocs = {};
+  const srcDoc = async (f) => {
+    if (!(f in srcDocs)) {
+      try { srcDocs[f] = await PDFDocument.load(await (await store.read(pagePath(d, f))).arrayBuffer(), { updateMetadata: false }); } catch (e) { srcDocs[f] = null; }
+    }
+    return srcDocs[f];
+  };
+  // 没改过、没水印的页面：直接用原 PDF 的那一页（最清楚、最快）。同一个原档一次复制，共用的字体/图片只放一份
+  const copied = {};
+  if (!(o.wm || '').trim()) {
+    const bySrc = {};
+    d.pages.forEach((pg) => { if (pg.src && untouched(pg)) (bySrc[pg.src.f] = bySrc[pg.src.f] || []).push(pg.src.i); });
+    for (const f of Object.keys(bySrc)) {
+      const sd = await srcDoc(f);
+      if (!sd) continue;
+      const idx = [...new Set(bySrc[f])].filter((i) => i < sd.getPageCount());
+      try {
+        const cps = await pdf.copyPages(sd, idx);
+        idx.forEach((i, k) => { copied[f + '#' + i] = cps[k]; });
+      } catch (e) { /* 复制不了就用图片 */ }
+    }
+  }
+  const used = new Set();
   for (let i = 0; i < d.pages.length; i++) {
     if (onProgress) onProgress(i + 1, d.pages.length);
     const pg = d.pages[i];
+    const key = pg.src && untouched(pg) ? pg.src.f + '#' + pg.src.i : null;
+    if (key && copied[key] && !used.has(key)) { pdf.addPage(copied[key]); used.add(key); continue; }
     const raw = await store.read(pagePath(d, pg.f));
     let img = null, w, h;
     // 没滤镜、没水印（画质不是“小文件”）：原图直接放进 PDF，不再重新压缩（快很多）
