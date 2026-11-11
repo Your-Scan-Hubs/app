@@ -684,34 +684,41 @@ function drawCollage(ctx, W, H, imgs, layoutKey, scalePct) {
     ctx.restore();
   };
   if (L.k === 'id') {
-    // 身份证真实尺寸 85.6 × 54 mm，上下排，整组置中
-    const boxes = imgs.map((im) => {
-      const portrait = im.bmp.height > im.bmp.width;
-      return portrait ? [54 * mm * sc, 85.6 * mm * sc] : [85.6 * mm * sc, 54 * mm * sc];
-    });
-    const gap = 14 * mm * sc;
-    let total = boxes.reduce((a, b) => a + b[1], 0) + gap * (boxes.length - 1);
-    let k = 1;
-    if (total > H - 20 * mm) { k = (H - 20 * mm) / total; total *= k; }
-    let y = (H - total) / 2;
+    // 身份证真实尺寸 85.6 × 54 mm。跟 ClearScanner 一样：正面在上半部、背面在下半部，中间拉开（方便剪开）
+    const n = imgs.length;
     imgs.forEach((im, i) => {
-      const [bw, bh] = [boxes[i][0] * k, boxes[i][1] * k];
+      const portrait = im.bmp.height > im.bmp.width;
+      let bw = (portrait ? 54 : 85.6) * mm * sc, bh = (portrait ? 85.6 : 54) * mm * sc;
+      const slot = H / n;                            // 每张卡占一段
+      const cy = n === 2 ? (i === 0 ? H * 0.308 : H * 0.692) : slot * i + slot / 2;
+      const k = Math.min(1, (slot - 8 * mm) / bh);   // 太大放不下就缩
+      bw *= k; bh *= k;
       const ar = im.bmp.width / im.bmp.height, br = bw / bh;
-      // 比例接近卡片就铺满，差太多就等比例放
-      place(im, (W - bw) / 2, y, bw, bh, Math.abs(ar - br) / br > 0.12);
-      y += bh + gap * k;
+      place(im, (W - bw) / 2, cy - bh / 2, bw, bh, Math.abs(ar - br) / br > 0.12);
     });
     return 0;
   }
-  const M = 10 * mm, G = 5 * mm;
-  const cw = (W - M * 2 - G * (L.c - 1)) / L.c;
-  const ch = (H - M * 2 - G * (L.r - 1)) / L.r;
+  // 格子排版：图片撑满格子、彼此紧贴没有空隙，整组水平置中、从上面开始排
+  const M = 3 * mm;
+  const cw = (W - M * 2) / L.c, ch = (H - M * 2) / L.r;
   const cells = L.c * L.r;
-  imgs.slice(0, cells).forEach((im, i) => {
-    const col = i % L.c, row = Math.floor(i / L.c);
-    const w = cw * sc, h = ch * sc;
-    place(im, M + col * (cw + G) + (cw - w) / 2, M + row * (ch + G) + (ch - h) / 2, w, h, true);
+  const list = imgs.slice(0, cells).map((im) => {
+    const s2 = Math.min((cw * sc) / im.bmp.width, (ch * sc) / im.bmp.height);
+    return { im, w: im.bmp.width * s2, h: im.bmp.height * s2 };
   });
+  let y = M;
+  for (let r = 0; r < L.r; r++) {
+    const row = list.slice(r * L.c, r * L.c + L.c);
+    if (!row.length) break;
+    const rowW = row.reduce((a, x) => a + x.w, 0);
+    const rowH = Math.max(...row.map((x) => x.h));
+    let x = (W - rowW) / 2;
+    for (const it of row) {
+      place(it.im, x, y + (rowH - it.h) / 2, it.w, it.h, false);
+      x += it.w;
+    }
+    y += rowH;
+  }
   return Math.max(0, imgs.length - cells);
 }
 
