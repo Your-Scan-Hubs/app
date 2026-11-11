@@ -622,7 +622,7 @@ async function selCopy() {
   if (!v) return;
   let target = d;
   if (v === 'other') {
-    const id = await actionSheet(t('copyToOther'), others.slice(0, 40).map((x) => ({ icon: I.docs, label: x.name, right: t('nPages', { n: x.pages.length }), value: x.id })));
+    const id = await pickDocSheet(t('selectTarget'), others);
     if (!id) return;
     target = docById(id);
   }
@@ -741,9 +741,8 @@ function drawCollage(ctx, W, H, imgs, layoutKey, scalePct) {
     });
     return 0;
   }
-  // 格子排版（跟 ClearScanner 一样）：
-  // 先按 100% 算好每张图的位置（撑满格子、彼此紧贴、整组从上面开始排），
-  // 调小时每张图以自己的位置为中心缩小，所以会慢慢分开、各自留在原位
+  // 格子排版（跟 ClearScanner 一样）：格子固定、从左上开始排（A4 打印从左边开始，整齐）。
+  // 每张图放进自己那一格（100% 时撑满格子）；调小时贴着格子上方、以格子中线缩小，所以会各自分开
   const M = 3 * mm;
   const cw = (W - M * 2) / L.c, ch = (H - M * 2) / L.r;
   const cells = L.c * L.r;
@@ -755,15 +754,12 @@ function drawCollage(ctx, W, H, imgs, layoutKey, scalePct) {
   for (let r = 0; r < L.r; r++) {
     const row = list.slice(r * L.c, r * L.c + L.c);
     if (!row.length) break;
-    const rowW = row.reduce((a, x) => a + x.w, 0);
-    const rowH = Math.max(...row.map((x) => x.h));
-    let x = (W - rowW) / 2;
-    for (const it of row) {
-      const cx = x + it.w / 2, cy = y + rowH / 2;
+    const rowH = Math.max(...row.map((x) => x.h)); // 行高按这一行最高的图，行与行之间不留空
+    row.forEach((it, c) => {
       const w = it.w * sc, h = it.h * sc;
-      place(it.im, cx - w / 2, cy - h / 2, w, h, false);
-      x += it.w;
-    }
+      const cx = M + c * cw + cw / 2;
+      place(it.im, cx - w / 2, y, w, h, false);
+    });
     y += rowH;
   }
   return Math.max(0, imgs.length - cells);
@@ -1607,4 +1603,25 @@ async function offerOpenInOffice(it) {
   } catch (e) {
     toast(t('officeFail'), 5000);
   }
+}
+
+/** 选目标文件：像首页一样有缩略图、名字、大小、页数、日期，上面可以搜索 */
+function pickDocSheet(title, docs) {
+  const rowsHtml = (q) => docs
+    .filter((x) => !q || x.name.toLowerCase().includes(q.toLowerCase()))
+    .map((x) => `
+      <button class="pick-row" data-id="${x.id}">
+        <span class="th">${x.pages[0] ? `<img loading="lazy" src="${store.url(`docs/${x.id}/${x.pages[0].t}`)}" style="filter:${pcss(x.pages[0])}" alt="" />` : ''}</span>
+        <span class="info"><b>${esc(x.name)}</b><small>${fmtSize(docSize(x))} · ${t('nPages', { n: x.pages.length })} · ${fmtDate(x.updated)}</small></span>
+      </button>`).join('') || `<p class="desc" style="text-align:center;margin:24px 0">${esc(t('emptySearch').replace('<br/>', ' '))}</p>`;
+  return openSheet(`
+    <h3>${esc(title)}</h3>
+    <div class="pick-search">${I.search || ''}<input type="text" id="pk-q" placeholder="${esc(t('searchPh'))}" /></div>
+    <div class="pick-list" id="pk-list">${rowsHtml('')}</div>
+    <div class="btns"><button id="pk-no">${esc(t('cancel'))}</button></div>`, (sh) => {
+    const bind = () => $$('.pick-row', sh).forEach((b) => b.addEventListener('click', () => closeSheet(b.dataset.id)));
+    bind();
+    $('#pk-q', sh).addEventListener('input', (e) => { $('#pk-list', sh).innerHTML = rowsHtml(e.target.value.trim()); bind(); });
+    $('#pk-no', sh).onclick = () => closeSheet(null);
+  });
 }

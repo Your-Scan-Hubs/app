@@ -5,6 +5,7 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    selectTarget: "选择目标文件",
     copyPagesN: "复制 {n} 页",
     copyHere: "复制在这份文件",
     copyNewFile: "复制成新文件",
@@ -215,6 +216,7 @@ const STR = {
   },
 
   en: {
+    selectTarget: "Select a target file",
     copyPagesN: "Copy {n} page(s)",
     copyHere: "Copy in this file",
     copyNewFile: "Copy to a new file",
@@ -426,6 +428,7 @@ const STR = {
   },
 
   ms: {
+    selectTarget: "Pilih fail sasaran",
     copyPagesN: "Salin {n} halaman",
     copyHere: "Salin dalam fail ini",
     copyNewFile: "Salin ke fail baharu",
