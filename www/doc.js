@@ -971,27 +971,27 @@ let CR = null;
 async function openCrop(i) {
   const d = curDoc();
   const p = d.pages[i];
-  busy(t('loading'));
+  // 直接让 WebView 读原图（不经过网页解码、缩小、再编码），打开几乎不用等
+  const img = $('#cr-img');
+  const slow = setTimeout(() => busy(t('loading')), 250);
   try {
-    const bmp = await decode(await store.read(pagePath(d, p.o)));
-    CR = { i, rot: p.rot || 0, q: (p.quad || FULL_QUAD).map((pt) => [...pt]), bmp, url: null };
-    await cropPreview();
+    img.style.transform = '';
+    img.src = store.url(pagePath(d, p.o));
+    await img.decode();
+    CR = { i, rot: p.rot || 0, q: (p.quad || FULL_QUAD).map((pt) => [...pt]), nw: img.naturalWidth, nh: img.naturalHeight };
+    cropDims();
     show('crop');
     requestAnimationFrame(drawCrop);
   } catch (e) { toast(t('readFail')); }
+  clearTimeout(slow);
   busy(false);
 }
 
-async function cropPreview() {
-  const cv = toCanvas(CR.bmp, { max: 1600, rotate: CR.rot });
-  CR.pw = cv.width; CR.ph = cv.height;
-  const blob = await cvBlob(cv, 0.85);
-  freeCv(cv);
-  if (CR.url) URL.revokeObjectURL(CR.url);
-  CR.url = URL.createObjectURL(blob);
-  const img = $('#cr-img');
-  img.src = CR.url;
-  await img.decode().catch(() => {});
+/** 旋转 90/270 度时宽高对调 */
+function cropDims() {
+  const side = CR.rot % 180 !== 0;
+  CR.pw = side ? CR.nh : CR.nw;
+  CR.ph = side ? CR.nw : CR.nh;
 }
 
 /** 图片在画面里的位置 */
@@ -1007,7 +1007,13 @@ function drawCrop() {
   if (!CR) return;
   const r = cropRect();
   const img = $('#cr-img');
-  Object.assign(img.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+  // 旋转只用 CSS 显示（原图不动），宽高对调后绕中心转
+  const side = CR.rot % 180 !== 0;
+  const iw = side ? r.h : r.w, ih = side ? r.w : r.h;
+  Object.assign(img.style, {
+    left: r.x + (r.w - iw) / 2 + 'px', top: r.y + (r.h - ih) / 2 + 'px', width: iw + 'px', height: ih + 'px',
+    transform: CR.rot ? `rotate(${CR.rot}deg)` : '',
+  });
   const P = CR.q.map(([x, y]) => [r.x + x * r.w, r.y + y * r.h]);
   const poly = P.map((p) => p.join(',')).join(' ');
   const mids = P.map((p, k) => { const n = P[(k + 1) % 4]; return [(p[0] + n[0]) / 2, (p[1] + n[1]) / 2]; });
@@ -1073,14 +1079,20 @@ function drawCrop() {
 async function cropRotate(deg) {
   CR.rot = (((CR.rot + deg) % 360) + 360) % 360;
   CR.q = rotateQuad(CR.q, deg);
-  await cropPreview();
+  cropDims();
   drawCrop();
 }
 
 function closeCrop() {
-  if (CR) { freeBmp(CR.bmp); if (CR.url) URL.revokeObjectURL(CR.url); }
+  const i = CR && CR.i;
   CR = null;
-  renderSlides();
+  $('#cr-img').removeAttribute('src');
+  // 只换改过的那一页，不重画全部（页数多时快很多）
+  const d = curDoc(), sl = $('#pg-slides').children[i], p = d && d.pages[i];
+  if (sl && p && d.pages.length === $('#pg-slides').children.length) {
+    const im = sl.querySelector('img');
+    im.src = store.url(pagePath(d, p.f)); im.style.filter = pcss(p);
+  } else renderSlides();
   show('page');
   requestAnimationFrame(() => { const s = $('#pg-slides'); s.style.scrollBehavior = 'auto'; s.scrollLeft = PIDX * s.clientWidth; s.style.scrollBehavior = ''; });
 }
