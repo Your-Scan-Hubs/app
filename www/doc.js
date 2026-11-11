@@ -801,10 +801,16 @@ async function collageApply() {
     const cv = document.createElement('canvas');
     cv.width = 2480; cv.height = 3508; // A4 300dpi
     drawCollage(cv.getContext('2d'), cv.width, cv.height, CL.imgs, CL.layout, CL.scale);
-    const blob = await cvBlob(cv, 0.92);
-    freeCv(cv);
+    // 只压缩一次；缩略图直接从拼好的画面缩小（不再重新读一遍，快很多）
+    const blob = await cvBlob(cv, 0.9);
+    const tc = toCanvas(cv, { max: THUMB_MAX });
+    const tb = await cvBlob(tc, 0.75);
+    freeCv(tc); freeCv(cv);
+    const o = 'o_' + uid() + '.jpg', tn = 't_' + uid() + '.jpg';
+    await store.write(pagePath(d, o), blob);
+    await store.write(pagePath(d, tn), tb);
+    const p = { id: uid(), o, f: o, t: tn, rot: 0, quad: null, filter: 'none', b: 0, c: 0, size: blob.size, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' };
     // 拼好的这一页加进现在这份文件，放在选中的页面后面，画面留在文件页
-    const p = await importImage(d.id, blob, 'none');
     const sel = selPages();
     const after = sel.length ? d.pages.indexOf(sel[sel.length - 1]) + 1 : d.pages.length;
     d.pages.splice(after, 0, p);
@@ -1296,17 +1302,27 @@ function webDownload(url, name) {
 async function renderPagesToFiles(d, pages) {
   await store.clearShare();
   const base = safeName(d.name);
+  const wm = ((d.pdfOpts && d.pdfOpts.wm) || '').trim();
   const out = [];
+  if (NATIVE) await FS.mkdir({ path: 'share', directory: 'CACHE', recursive: true }).catch(() => {});
   for (let i = 0; i < pages.length; i++) {
     busy(t('preparingImg', { i: i + 1, n: pages.length }));
     const p = pages[i];
-    const bmp = await decode(await store.read(pagePath(d, p.f)));
-    const cv = toCanvas(bmp, { max: STORE_MAX, css: pcss(p), wm: ((d.pdfOpts && d.pdfOpts.wm) || '').trim() });
-    freeBmp(bmp);
-    const blob = await cvBlob(cv, 0.9);
-    freeCv(cv);
     const idx = d.pages.indexOf(p) + 1;
     const name = d.pages.length > 1 ? `${base}_${pad2(idx)}.jpg` : `${base}.jpg`;
+    // 没滤镜、没水印：直接复制现成的图片文件（不用重新处理，很快）
+    if (NATIVE && pcss(p) === 'none' && !wm) {
+      try { out.push({ name, uri: await store.copyToShare(pagePath(d, p.f), name) }); continue; } catch (e) { /* 失败就照旧处理 */ }
+    }
+    const raw = await store.read(pagePath(d, p.f));
+    let blob = raw;
+    if (pcss(p) !== 'none' || wm) {
+      const bmp = await decode(raw);
+      const cv = toCanvas(bmp, { max: STORE_MAX, css: pcss(p), wm });
+      freeBmp(bmp);
+      blob = await cvBlob(cv, 0.9);
+      freeCv(cv);
+    }
     out.push(NATIVE ? { name, uri: await store.blobToShare(name, blob) } : { name, url: URL.createObjectURL(blob) });
   }
   busy(false);
