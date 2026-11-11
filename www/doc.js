@@ -588,29 +588,72 @@ async function selDelete() {
   toast(t('deleted'));
 }
 
+/** 复制一页的文件到目标文件（同一份或别份）。srcMap 用来让同一个原 PDF 只复制一次 */
+async function copyPageTo(from, p, to, srcMap) {
+  const np = JSON.parse(JSON.stringify(p));
+  np.id = uid();
+  const map = {};
+  for (const f of new Set([p.o, p.f, p.t])) {
+    const nf = f.slice(0, 2) + uid() + '.jpg';
+    map[f] = nf;
+    await store.write(pagePath(to, nf), await store.read(pagePath(from, f)));
+  }
+  np.o = map[p.o]; np.f = map[p.f]; np.t = map[p.t];
+  if (p.src && p.src.f && from.id !== to.id) {
+    if (!(p.src.f in srcMap)) {
+      const nf = 'src_' + uid() + '.pdf';
+      try { await store.write(pagePath(to, nf), await store.read(pagePath(from, p.src.f))); srcMap[p.src.f] = nf; } catch (e) { srcMap[p.src.f] = null; }
+    }
+    if (srcMap[p.src.f]) np.src = { f: srcMap[p.src.f], i: p.src.i }; else delete np.src;
+  }
+  return np;
+}
+
 async function selCopy() {
   const d = curDoc();
   const ps = selPages();
+  if (!ps.length) return;
+  const others = live().filter((x) => x.id !== d.id).sort((a, b) => b.updated - a.updated);
+  const v = await actionSheet(t('copyPagesN', { n: ps.length }), [
+    { icon: I.dup, label: t('copyHere'), value: 'here' },
+    { icon: I.plus, label: t('copyNewFile'), value: 'new' },
+    ...(others.length ? [{ icon: I.docs, label: t('copyToOther'), value: 'other' }] : []),
+  ]);
+  if (!v) return;
+  let target = d;
+  if (v === 'other') {
+    const id = await actionSheet(t('copyToOther'), others.slice(0, 40).map((x) => ({ icon: I.docs, label: x.name, right: t('nPages', { n: x.pages.length }), value: x.id })));
+    if (!id) return;
+    target = docById(id);
+  }
   busy(t('duplicating'));
   try {
-    for (const p of ps) {
-      const np = JSON.parse(JSON.stringify(p));
-      np.id = uid();
-      const map = {};
-      for (const f of new Set([p.o, p.f, p.t])) {
-        const nf = f.slice(0, 2) + uid() + '.jpg';
-        map[f] = nf;
-        await store.write(pagePath(d, nf), await store.read(pagePath(d, f)));
-      }
-      np.o = map[p.o]; np.f = map[p.f]; np.t = map[p.t];
-      d.pages.splice(d.pages.indexOf(ps[ps.length - 1]) + 1 + ps.indexOf(p), 0, np);
+    const srcMap = {};
+    if (v === 'new') {
+      const nid = uid();
+      const tmp = { id: nid };
+      const pages = [];
+      for (const p of ps) pages.push(await copyPageTo(d, p, tmp, srcMap));
+      busy(false);
+      SEL = null;
+      const now = Date.now();
+      DB.docs.push({ id: nid, name: `${d.name} ${t('copySuffix')}`, folder: d.folder || '', created: now, updated: now, pages, pdf: null, pdfDirty: true, pdfSize: 0, pdfOpts: { ...(d.pdfOpts || {}) } });
+      await saveDB();
+      renderDoc();
+      toast(t('copiedToNew'), 3000);
+      return;
     }
-    await touch(d);
-    toast(t('dupDone'));
+    const copies = [];
+    for (const p of ps) copies.push(await copyPageTo(d, p, target, srcMap));
+    if (target === d) d.pages.splice(d.pages.indexOf(ps[ps.length - 1]) + 1, 0, ...copies);
+    else target.pages.push(...copies);
+    await touch(target);
+    toast(target === d ? t('dupDone') : t('copiedTo', { name: target.name }), 3000);
   } catch (e) { toast(t('dupFail')); }
   busy(false);
   SEL = null;
   renderDoc();
+  runOcrQueue();
 }
 
 $('#sel-all').addEventListener('click', () => {
@@ -756,11 +799,19 @@ async function collageApply() {
     drawCollage(cv.getContext('2d'), cv.width, cv.height, CL.imgs, CL.layout, CL.scale);
     const blob = await cvBlob(cv, 0.92);
     freeCv(cv);
+    // 拼好的这一页加进现在这份文件，放在选中的页面后面，画面留在文件页
+    const p = await importImage(d.id, blob, 'none');
+    const sel = selPages();
+    const after = sel.length ? d.pages.indexOf(sel[sel.length - 1]) + 1 : d.pages.length;
+    d.pages.splice(after, 0, p);
+    await touch(d);
     busy(false);
     closeCollage();
     SEL = null;
-    const nd = await newDocFrom([blob], { name: `${d.name} ${t('collage')}` });
-    if (nd) { nd.pdfOpts.paper = 'a4'; await saveDB(); toast(t('collageDone'), 3500); }
+    renderDoc();
+    setTimeout(() => { const el = $$('#doc-pages .pcard')[after]; if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 80);
+    toast(t('collageAdded', { n: after + 1 }), 3500);
+    runOcrQueue();
   } catch (e) {
     busy(false);
     toast(t('saveFail') + (e.message || e));

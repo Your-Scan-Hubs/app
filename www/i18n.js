@@ -5,6 +5,13 @@ const LANG_SHORT = { en: 'EN', ms: 'BM', zh: '中' };
 
 const STR = {
   zh: {
+    copyPagesN: "复制 {n} 页",
+    copyHere: "复制在这份文件",
+    copyNewFile: "复制成新文件",
+    copyToOther: "复制到别的文件…",
+    copiedTo: "已复制到「{name}」",
+    copiedToNew: "已复制成新文件，在首页可以看到",
+    collageAdded: "拼图已加到第 {n} 页",
     secFolders: "文件夹",
     secTools: "工具",
     secApp: "App",
@@ -208,6 +215,13 @@ const STR = {
   },
 
   en: {
+    copyPagesN: "Copy {n} page(s)",
+    copyHere: "Copy in this file",
+    copyNewFile: "Copy to a new file",
+    copyToOther: "Copy to another file…",
+    copiedTo: "Copied to “{name}”",
+    copiedToNew: "Copied to a new file (see Documents)",
+    collageAdded: "Collage added as page {n}",
     secFolders: "Folders",
     secTools: "Tools",
     secApp: "App",
@@ -412,6 +426,13 @@ const STR = {
   },
 
   ms: {
+    copyPagesN: "Salin {n} halaman",
+    copyHere: "Salin dalam fail ini",
+    copyNewFile: "Salin ke fail baharu",
+    copyToOther: "Salin ke fail lain…",
+    copiedTo: "Disalin ke “{name}”",
+    copiedToNew: "Disalin ke fail baharu (lihat Dokumen)",
+    collageAdded: "Kolaj ditambah sebagai halaman {n}",
     secFolders: "Folder",
     secTools: "Alatan",
     secApp: "Aplikasi",
