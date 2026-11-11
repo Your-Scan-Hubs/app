@@ -257,7 +257,7 @@ async function hselMore() {
     try {
       for (const d of ds) {
         const nid = uid();
-        for (const f of docFiles(d)) await store.write(`docs/${nid}/${f}`, await store.read(`docs/${d.id}/${f}`));
+        for (const f of docFiles(d)) await store.copy(`docs/${d.id}/${f}`, `docs/${nid}/${f}`);
         const nd = JSON.parse(JSON.stringify(d));
         Object.assign(nd, { id: nid, name: d.name + ' ' + t('copySuffix'), created: Date.now(), updated: Date.now(), pdfDirty: true });
         if (nd.pdf) { await store.del(`docs/${nid}/${nd.pdf}`); nd.pdf = null; }
@@ -315,14 +315,14 @@ $('#hs-merge').addEventListener('click', async () => {
         for (const f of new Set([p.o, p.f, p.t])) {
           const nf = f.slice(0, 2) + uid() + '.jpg';
           map[f] = nf;
-          await store.write(`docs/${id}/${nf}`, await store.read(`docs/${d.id}/${f}`));
+          await store.copy(`docs/${d.id}/${f}`, `docs/${id}/${nf}`);
         }
         np.o = map[p.o]; np.f = map[p.f]; np.t = map[p.t];
         if (p.src && p.src.f) {
           const key = d.id + '/' + p.src.f;
           if (!srcMap[key]) {
             srcMap[key] = 'src_' + uid() + '.pdf';
-            try { await store.write(`docs/${id}/${srcMap[key]}`, await store.read(`docs/${d.id}/${p.src.f}`)); } catch (e) { srcMap[key] = null; }
+            try { await store.copy(`docs/${d.id}/${p.src.f}`, `docs/${id}/${srcMap[key]}`); } catch (e) { srcMap[key] = null; }
           }
           if (srcMap[key]) np.src = { f: srcMap[key], i: p.src.i }; else delete np.src;
         }

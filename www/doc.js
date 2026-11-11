@@ -114,10 +114,39 @@ async function keepSourcePdf(docId, path, it) {
     return f;
   } catch (e) { return null; }
 }
+/** CSS 滤镜字符串 → 原生滤镜步骤 */
+const cssOps = (css) => [...String(css || '').matchAll(/(grayscale|contrast|brightness|saturate)\(([\d.]+)\)/g)].map((m) => ({ k: m[1], v: +m[2] }));
+/** 原生套滤镜，输出到缓存 share/ 资料夹，返回 file:// uri；不行返回 null */
+async function nativeFiltered(d, p, name, quality = 92, max = 6000) {
+  if (!NATIVE || !YsNative) return null;
+  try {
+    const r = await YsNative.renderFiltered({ path: store.uri(pagePath(d, p.f)), name, ops: cssOps(pcss(p)), quality, max });
+    return r && r.uri;
+  } catch (e) { return null; }
+}
 const untouched = (p) => !p.rot && isFullQuad(p.quad) && pcss(p) === 'none';
 
 /** 重新生成一页（旋转 + 四角裁切），原图保留可以随时重调 */
 async function processPage(d, p) {
+  // 手机上：交给原生图形引擎做旋转和四角拉正（快很多）
+  if (NATIVE && YsNative) {
+    try {
+      const changed = !!p.rot || !isFullQuad(p.quad);
+      const r = await YsNative.processPage({
+        path: store.uri(pagePath(d, p.o)), outDir: store.uri('docs/' + d.id), id: 'p' + uid(),
+        rot: p.rot || 0, quad: isFullQuad(p.quad) ? null : p.quad.flat(), max: STORE_MAX, thumbMax: THUMB_MAX,
+      });
+      const oldF = p.f, oldT = p.t;
+      if (changed) { p.f = r.o; p.size = r.size; }
+      else { p.f = p.o; store.del(pagePath(d, r.o)); }
+      p.t = r.t;
+      if (oldF && oldF !== p.o && oldF !== p.f) store.del(pagePath(d, oldF));
+      if (oldT && oldT !== p.t && oldT !== p.o) store.del(pagePath(d, oldT));
+      p.text = '';
+      p.ocr = 'pending';
+      return;
+    } catch (e) { /* 失败就用网页方式 */ }
+  }
   const bmp = await decode(await store.read(pagePath(d, p.o)));
   let cv = toCanvas(bmp, { rotate: p.rot || 0 });
   freeBmp(bmp);
@@ -596,13 +625,13 @@ async function copyPageTo(from, p, to, srcMap) {
   for (const f of new Set([p.o, p.f, p.t])) {
     const nf = f.slice(0, 2) + uid() + '.jpg';
     map[f] = nf;
-    await store.write(pagePath(to, nf), await store.read(pagePath(from, f)));
+    await store.copy(pagePath(from, f), pagePath(to, nf));
   }
   np.o = map[p.o]; np.f = map[p.f]; np.t = map[p.t];
   if (p.src && p.src.f && from.id !== to.id) {
     if (!(p.src.f in srcMap)) {
       const nf = 'src_' + uid() + '.pdf';
-      try { await store.write(pagePath(to, nf), await store.read(pagePath(from, p.src.f))); srcMap[p.src.f] = nf; } catch (e) { srcMap[p.src.f] = null; }
+      try { await store.copy(pagePath(from, p.src.f), pagePath(to, nf)); srcMap[p.src.f] = nf; } catch (e) { srcMap[p.src.f] = null; }
     }
     if (srcMap[p.src.f]) np.src = { f: srcMap[p.src.f], i: p.src.i }; else delete np.src;
   }
@@ -1188,6 +1217,16 @@ async function buildPdf(d, onProgress) {
     if (pcss(pg) === 'none' && !(o.wm || '').trim() && o.quality !== 'small') {
       try { img = await pdf.embedJpg(new Uint8Array(await raw.arrayBuffer())); w = img.width; h = img.height; } catch (e) { img = null; }
     }
+    if (!img && NATIVE && !(o.wm || '').trim() && pcss(pg) !== 'none') {
+      const uri = await nativeFiltered(d, pg, 'pdf_' + uid() + '.jpg', Math.round(Q.q * 100), Q.max);
+      if (uri) {
+        try {
+          const ab = await (await fetch(C.convertFileSrc(uri))).arrayBuffer();
+          img = await pdf.embedJpg(new Uint8Array(ab)); w = img.width; h = img.height;
+        } catch (e) { img = null; }
+        try { await FS.deleteFile({ path: uri }); } catch (e) {}
+      }
+    }
     if (!img) {
       const bmp = await decode(raw);
       const cv = toCanvas(bmp, { max: Q.max, css: pcss(pg), wm: (o.wm || '').trim() });
@@ -1309,6 +1348,11 @@ async function renderPagesToFiles(d, pages) {
     // 没滤镜、没水印：直接复制现成的图片文件（不用重新处理，很快）
     if (NATIVE && pcss(p) === 'none' && !wm) {
       try { out.push({ name, uri: await store.copyToShare(pagePath(d, p.f), name) }); continue; } catch (e) { /* 失败就照旧处理 */ }
+    }
+    // 有滤镜、没水印：手机原生套滤镜（快、画质 92%）
+    if (NATIVE && !wm) {
+      const uri = await nativeFiltered(d, p, name);
+      if (uri) { out.push({ name, uri }); continue; }
     }
     const raw = await store.read(pagePath(d, p.f));
     let blob = raw;
@@ -1469,7 +1513,7 @@ async function docMenu(d, fromHome) {
     busy(t('duplicating'));
     try {
       const nid = uid();
-      for (const f of docFiles(d)) await store.write(`docs/${nid}/${f}`, await store.read(pagePath(d, f)));
+      for (const f of docFiles(d)) await store.copy(pagePath(d, f), `docs/${nid}/${f}`);
       const nd = JSON.parse(JSON.stringify(d));
       Object.assign(nd, { id: nid, name: d.name + ' ' + t('copySuffix'), created: Date.now(), updated: Date.now(), pdfDirty: true });
       if (nd.pdf) { await store.del(`docs/${nid}/${nd.pdf}`); nd.pdf = null; }

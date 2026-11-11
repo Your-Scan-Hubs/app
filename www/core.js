@@ -143,6 +143,15 @@ function nativeStore() {
       await FS.writeFile({ path: p, data: t, directory: D, encoding: 'utf8', recursive: true });
     },
     async move(a, b) { await FS.rename({ from: a, to: b, directory: D, toDirectory: D }); },
+    /** 手机里直接复制文件（不经过网页，快） */
+    async copy(a, b) {
+      try { await FS.copy({ from: a, to: b, directory: D, toDirectory: D }); }
+      catch (e) {
+        const dir = b.slice(0, b.lastIndexOf('/'));
+        await FS.mkdir({ path: dir, directory: D, recursive: true }).catch(() => {});
+        await FS.copy({ from: a, to: b, directory: D, toDirectory: D });
+      }
+    },
     async del(p) { try { await FS.deleteFile({ path: p, directory: D }); } catch (e) {} },
     async rmdir(p) { try { await FS.rmdir({ path: p, directory: D, recursive: true }); } catch (e) {} },
     async list(dir) {
@@ -179,6 +188,7 @@ function webStore() {
     async readText(p) { try { return localStorage.getItem('ys:' + p); } catch (e) { return null; } },
     async writeText(p, t) { try { localStorage.setItem('ys:' + p, t); } catch (e) {} },
     async move(a, b) { m.set(b, m.get(a)); m.delete(a); urls.delete(a); },
+    async copy(a, b) { if (!m.has(a)) throw new Error('missing ' + a); m.set(b, m.get(a)); urls.delete(b); },
     async del(p) { m.delete(p); urls.delete(p); },
     async rmdir(p) { for (const k of [...m.keys()]) if (k.startsWith(p + '/')) m.delete(k); },
     async list(dir) { return [...m.keys()].filter((k) => k.startsWith(dir + '/')).map((k) => k.slice(dir.length + 1)); },

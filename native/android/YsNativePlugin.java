@@ -10,6 +10,10 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageDecoder;
 import android.graphics.Canvas;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Color;
 import android.graphics.pdf.PdfRenderer;
 import com.getcapacitor.JSArray;
@@ -380,6 +384,139 @@ public class YsNativePlugin extends Plugin {
             b = s2;
         }
         return b;
+    }
+
+    /** 套滤镜（灰度/对比/亮度/饱和度，跟网页 CSS 滤镜一样的算法）后存成 JPEG */
+    @PluginMethod
+    public void renderFiltered(PluginCall call) {
+        final File src = fileFrom(call.getString("path"));
+        final String name = call.getString("name", "img_" + System.currentTimeMillis() + ".jpg");
+        final int quality = call.getInt("quality", 92);
+        final int maxSide = call.getInt("max", 6000);
+        final JSArray ops = call.getArray("ops");
+        if (src == null || !src.exists()) {
+            call.reject("文件不存在");
+            return;
+        }
+        new Thread(() -> {
+            try {
+                Bitmap b = decodeScaled(src, maxSide);
+                if (b == null) { call.reject("无法读取图片"); return; }
+                ColorMatrix cm = new ColorMatrix();
+                if (ops != null) {
+                    for (int i = 0; i < ops.length(); i++) {
+                        JSObject op = JSObject.fromJSONObject(ops.getJSONObject(i));
+                        String k = op.getString("k", "");
+                        float v = (float) op.getDouble("v");
+                        ColorMatrix m = new ColorMatrix();
+                        switch (k) {
+                            case "grayscale": {
+                                float a = Math.max(0f, Math.min(1f, v));
+                                m.set(new float[]{
+                                    0.2126f + 0.7874f * (1 - a), 0.7152f - 0.7152f * (1 - a), 0.0722f - 0.0722f * (1 - a), 0, 0,
+                                    0.2126f - 0.2126f * (1 - a), 0.7152f + 0.2848f * (1 - a), 0.0722f - 0.0722f * (1 - a), 0, 0,
+                                    0.2126f - 0.2126f * (1 - a), 0.7152f - 0.7152f * (1 - a), 0.0722f + 0.9278f * (1 - a), 0, 0,
+                                    0, 0, 0, 1, 0});
+                                break;
+                            }
+                            case "saturate": {
+                                m.set(new float[]{
+                                    0.2126f + 0.7874f * v, 0.7152f - 0.7152f * v, 0.0722f - 0.0722f * v, 0, 0,
+                                    0.2126f - 0.2126f * v, 0.7152f + 0.2848f * v, 0.0722f - 0.0722f * v, 0, 0,
+                                    0.2126f - 0.2126f * v, 0.7152f - 0.7152f * v, 0.0722f + 0.9278f * v, 0, 0,
+                                    0, 0, 0, 1, 0});
+                                break;
+                            }
+                            case "contrast": {
+                                float t = (0.5f - 0.5f * v) * 255f;
+                                m.set(new float[]{v, 0, 0, 0, t, 0, v, 0, 0, t, 0, 0, v, 0, t, 0, 0, 0, 1, 0});
+                                break;
+                            }
+                            case "brightness": {
+                                m.set(new float[]{v, 0, 0, 0, 0, 0, v, 0, 0, 0, 0, 0, v, 0, 0, 0, 0, 0, 1, 0});
+                                break;
+                            }
+                            default:
+                                continue;
+                        }
+                        cm.postConcat(m);
+                    }
+                }
+                Bitmap out = Bitmap.createBitmap(b.getWidth(), b.getHeight(), Bitmap.Config.ARGB_8888);
+                Canvas c = new Canvas(out);
+                c.drawColor(Color.WHITE);
+                Paint p = new Paint(Paint.FILTER_BITMAP_FLAG);
+                p.setColorFilter(new ColorMatrixColorFilter(cm));
+                c.drawBitmap(b, 0, 0, p);
+                b.recycle();
+                File dir = new File(getContext().getCacheDir(), "share");
+                if (!dir.exists()) dir.mkdirs();
+                File f = new File(dir, name);
+                try (OutputStream os = new FileOutputStream(f)) {
+                    out.compress(Bitmap.CompressFormat.JPEG, quality, os);
+                }
+                out.recycle();
+                JSObject r = new JSObject();
+                r.put("uri", Uri.fromFile(f).toString());
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : "处理失败");
+            }
+        }).start();
+    }
+
+    /** 旋转 + 四角拉正（透视校正），用手机图形引擎处理，很快 */
+    @PluginMethod
+    public void processPage(PluginCall call) {
+        final File src = fileFrom(call.getString("path"));
+        final File outDir = fileFrom(call.getString("outDir"));
+        final String id = call.getString("id", String.valueOf(System.currentTimeMillis()));
+        final int rot = call.getInt("rot", 0);
+        final int max = call.getInt("max", 2480);
+        final int thumbMax = call.getInt("thumbMax", 420);
+        final JSArray quad = call.getArray("quad");
+        if (src == null || !src.exists() || outDir == null) {
+            call.reject("文件不存在");
+            return;
+        }
+        new Thread(() -> {
+            try {
+                Bitmap b = decodeScaled(src, max);
+                if (b == null) { call.reject("无法读取图片"); return; }
+                int r = ((rot % 360) + 360) % 360;
+                if (r != 0) {
+                    Matrix m = new Matrix();
+                    m.postRotate(r);
+                    Bitmap rb = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
+                    if (rb != b) b.recycle();
+                    b = rb;
+                }
+                if (quad != null && quad.length() == 8) {
+                    int W = b.getWidth(), H = b.getHeight();
+                    float[] sp = new float[8];
+                    for (int i = 0; i < 8; i++) sp[i] = (float) quad.getDouble(i) * (i % 2 == 0 ? W : H);
+                    double top = Math.hypot(sp[2] - sp[0], sp[3] - sp[1]), bot = Math.hypot(sp[4] - sp[6], sp[5] - sp[7]);
+                    double left = Math.hypot(sp[6] - sp[0], sp[7] - sp[1]), right = Math.hypot(sp[4] - sp[2], sp[5] - sp[3]);
+                    double w = Math.max(top, bot), h = Math.max(left, right);
+                    double sc = Math.min(1.0, max / Math.max(w, h));
+                    int ow = Math.max(1, (int) Math.round(w * sc)), oh = Math.max(1, (int) Math.round(h * sc));
+                    float[] dp = new float[]{0, 0, ow, 0, ow, oh, 0, oh};
+                    Matrix pm = new Matrix();
+                    pm.setPolyToPoly(sp, 0, dp, 0, 4);
+                    Bitmap out = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888);
+                    Canvas c = new Canvas(out);
+                    c.drawColor(Color.WHITE);
+                    c.drawBitmap(b, pm, new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG));
+                    b.recycle();
+                    b = out;
+                }
+                JSObject res = writePage(b, outDir, id, thumbMax, 90);
+                b.recycle();
+                call.resolve(res);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : "处理失败");
+            }
+        }).start();
     }
 
     /** 一张图片直接在原生层存成页面（比网页里处理快很多，也支持 HEIC） */
