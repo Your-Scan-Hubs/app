@@ -741,12 +741,14 @@ function drawCollage(ctx, W, H, imgs, layoutKey, scalePct) {
     });
     return 0;
   }
-  // 格子排版：图片撑满格子、彼此紧贴没有空隙，整组水平置中、从上面开始排
+  // 格子排版（跟 ClearScanner 一样）：
+  // 先按 100% 算好每张图的位置（撑满格子、彼此紧贴、整组从上面开始排），
+  // 调小时每张图以自己的位置为中心缩小，所以会慢慢分开、各自留在原位
   const M = 3 * mm;
   const cw = (W - M * 2) / L.c, ch = (H - M * 2) / L.r;
   const cells = L.c * L.r;
   const list = imgs.slice(0, cells).map((im) => {
-    const s2 = Math.min((cw * sc) / im.bmp.width, (ch * sc) / im.bmp.height);
+    const s2 = Math.min(cw / im.bmp.width, ch / im.bmp.height);
     return { im, w: im.bmp.width * s2, h: im.bmp.height * s2 };
   });
   let y = M;
@@ -757,7 +759,9 @@ function drawCollage(ctx, W, H, imgs, layoutKey, scalePct) {
     const rowH = Math.max(...row.map((x) => x.h));
     let x = (W - rowW) / 2;
     for (const it of row) {
-      place(it.im, x, y + (rowH - it.h) / 2, it.w, it.h, false);
+      const cx = x + it.w / 2, cy = y + rowH / 2;
+      const w = it.w * sc, h = it.h * sc;
+      place(it.im, cx - w / 2, cy - h / 2, w, h, false);
       x += it.w;
     }
     y += rowH;
