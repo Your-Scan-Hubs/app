@@ -132,12 +132,13 @@
       <button class="pill-btn ghostpill" id="fl-all" data-i18n="applyAll"></button>
     </header>
     <div class="ftabs" id="fl-tabs"></div>
-    <div class="stage fstage"><img id="fl-img" alt="" /></div>
+    <div class="stage fstage" id="fl-stage"><img id="fl-img" alt="" /><div id="fl-warp" hidden><img alt="" /></div></div>
     <div class="sliders">
       <label><span data-i18n="brightness"></span><input type="range" id="fl-b" min="-50" max="50" step="1" value="0" /><em id="fl-bv">0</em></label>
       <label><span data-i18n="contrast"></span><input type="range" id="fl-c" min="-50" max="50" step="1" value="0" /><em id="fl-cv">0</em></label>
     </div>
     <nav class="toolbar">
+      <button class="tb" id="fl-crop"><svg viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span data-i18n="cropBtn"></span></button>
       <button class="tb" id="fl-rl"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span data-i18n="rotateLeft"></span></button>
       <button class="tb" id="fl-rr"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span data-i18n="rotateRight"></span></button>
       <button class="tb" id="fl-reset"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg><span data-i18n="reset"></span></button>

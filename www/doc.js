@@ -145,7 +145,7 @@ async function processPage(d, p) {
       p.text = '';
       p.ocr = 'pending';
       return;
-    } catch (e) { /* 失败就用网页方式 */ }
+    } catch (e) { /* 失败就用网页方式（较慢），提示一次方便查原因 */ if (!processPage.warned) { processPage.warned = 1; toast('Native crop fallback: ' + (e.message || e)); } }
   }
   const bmp = await decode(await store.read(pagePath(d, p.o)));
   let cv = toCanvas(bmp, { rotate: p.rot || 0 });
@@ -968,7 +968,7 @@ $('#pg-more').addEventListener('click', async () => {
    ========================================================= */
 let CR = null;
 
-async function openCrop(i) {
+async function openCrop(i, keep) {
   const d = curDoc();
   const p = d.pages[i];
   // 直接让 WebView 读原图（不经过网页解码、缩小、再编码），打开几乎不用等
@@ -978,7 +978,7 @@ async function openCrop(i) {
     img.style.transform = '';
     img.src = store.url(pagePath(d, p.o));
     await img.decode();
-    CR = { i, rot: p.rot || 0, q: (p.quad || FULL_QUAD).map((pt) => [...pt]), nw: img.naturalWidth, nh: img.naturalHeight };
+    CR = { i, keep, rot: p.rot || 0, q: (p.quad || FULL_QUAD).map((pt) => [...pt]), nw: img.naturalWidth, nh: img.naturalHeight };
     cropDims();
     show('crop');
     requestAnimationFrame(drawCrop);
@@ -1083,8 +1083,8 @@ async function cropRotate(deg) {
   drawCrop();
 }
 
-function closeCrop() {
-  const i = CR && CR.i;
+function closeCrop(idx) {
+  const i = idx != null ? idx : CR && CR.i;
   CR = null;
   $('#cr-img').removeAttribute('src');
   // 只换改过的那一页，不重画全部（页数多时快很多）
@@ -1097,7 +1097,23 @@ function closeCrop() {
   requestAnimationFrame(() => { const s = $('#pg-slides'); s.style.scrollBehavior = 'auto'; s.scrollLeft = PIDX * s.clientWidth; s.style.scrollBehavior = ''; });
 }
 
-async function cropApply() {
+/* 裁边/旋转在后台排队处理，界面不用等；离开编辑前才等它做完 */
+let PAGE_JOB = Promise.resolve();
+function queueProcess(d, p) {
+  const job = PAGE_JOB.catch(() => {}).then(() => processPage(d, p)).then(() => touch(d));
+  PAGE_JOB = job.catch((e) => toast(t('saveFail') + (e.message || e)));
+  return PAGE_JOB;
+}
+async function waitJob(job) {
+  let done = false;
+  job.then(() => { done = true; });
+  await new Promise((r) => setTimeout(r, 0));
+  if (!done) busy(t('processing'));
+  await job;
+  busy(false);
+}
+
+function cropApply() {
   const d = curDoc();
   const p = d.pages[CR.i];
   // 角的顺序乱了（交叉）就按位置重新排
@@ -1107,23 +1123,25 @@ async function cropApply() {
   let s = 0;
   q.forEach((v, k) => { if (v[0] + v[1] < q[s][0] + q[s][1]) s = k; });
   const ordered = [0, 1, 2, 3].map((k) => q[(s + k) % 4]);
-  busy(t('processing'));
-  try {
-    p.rot = CR.rot;
-    p.quad = isFullQuad(ordered) ? null : ordered;
-    await processPage(d, p);
-    await touch(d);
-  } catch (e) { toast(t('saveFail') + (e.message || e)); }
-  busy(false);
-  closeCrop();
-  runOcrQueue();
+  p.rot = CR.rot;
+  p.quad = isFullQuad(ordered) ? null : ordered;
+  // 跟 ClearScanner 一样：裁完直接去选滤镜。真正的裁切在后台做，先用预览显示
+  const job = queueProcess(d, p);
+  const pend = { job, src: $('#cr-img').src, nw: CR.nw, nh: CR.nh, rot: p.rot, quad: p.quad || FULL_QUAD };
+  const keep = CR.keep, i = CR.i;
+  CR = null;
+  openFilter(i, pend, keep);
 }
 
-$('#cr-back').addEventListener('click', closeCrop);
+$('#cr-back').addEventListener('click', () => {
+  // 从滤镜页进来的，返回滤镜页
+  if (CR && CR.keep) { const i = CR.i, keep = CR.keep; CR = null; openFilter(i, null, keep); }
+  else closeCrop();
+});
 $('#cr-full').addEventListener('click', () => { CR.q = FULL_QUAD.map((p) => [...p]); drawCrop(); });
 $('#cr-rl').addEventListener('click', () => cropRotate(-90));
 $('#cr-rr').addEventListener('click', () => cropRotate(90));
-$('#cr-ok').addEventListener('click', cropApply);
+$('#cr-ok').addEventListener('click', () => { if (CR) cropApply(); });
 window.addEventListener('resize', () => { if (VIEW === 'crop') drawCrop(); });
 
 /* =========================================================
@@ -1131,24 +1149,59 @@ window.addEventListener('resize', () => { if (VIEW === 'crop') drawCrop(); });
    ========================================================= */
 let FL = null;
 
-function openFilter(i) {
+function openFilter(i, pend, keep) {
   const d = curDoc();
   const p = d.pages[i];
-  FL = { i, filter: OLD_FILTER[p.filter] || p.filter || 'none', b: p.b || 0, c: p.c || 0, rot: 0 };
-  $('#fl-img').src = store.url(pagePath(d, p.f));
-  const turl = store.url(pagePath(d, p.t));
+  FL = keep ? { ...keep, i } : { i, filter: OLD_FILTER[p.filter] || p.filter || 'none', b: p.b || 0, c: p.c || 0, rot: 0 };
+  FL.job = pend ? pend.job : FL.job || PAGE_JOB;
+  const showReal = () => {
+    $('#fl-warp').hidden = true;
+    $('#fl-img').hidden = false;
+    $('#fl-img').src = store.url(pagePath(d, p.f));
+    const turl = store.url(pagePath(d, p.t));
+    $$('#fl-tabs img').forEach((im) => { im.src = turl; });
+  };
+  const turl = store.url(pagePath(d, pend ? p.o : p.t));
   $('#fl-tabs').innerHTML = FILTERS.map((f) => `<button data-k="${f.k}"><img src="${turl}" style="filter:${pcss({ filter: f.k })}" alt="" /><span>${esc(t(f.n))}</span></button>`).join('');
   $$('#fl-tabs button').forEach((b) => b.addEventListener('click', () => { FL.filter = b.dataset.k; flUpdate(); }));
   $('#fl-b').value = FL.b;
   $('#fl-c').value = FL.c;
-  flUpdate();
   show('filter');
+  if (pend) {
+    // 先用 CSS 把原图拉正显示（马上看到结果），后台做完再换成真的图
+    $('#fl-img').hidden = true;
+    requestAnimationFrame(() => warpPreview(pend));
+    const me = FL;
+    pend.job.then(() => { if (FL === me) showReal(); });
+  } else showReal();
+  flUpdate();
+}
+
+/** 用 CSS 透视变形预览裁边结果 */
+function warpPreview(pd) {
+  const box = $('#fl-warp'), im = box.querySelector('img');
+  const r = pd.rot % 360, RW = r % 180 ? pd.nh : pd.nw, RH = r % 180 ? pd.nw : pd.nh;
+  const back = ([u, v]) => (r === 90 ? [v, 1 - u] : r === 180 ? [1 - u, 1 - v] : r === 270 ? [1 - v, u] : [u, v]);
+  const qr = pd.quad.map(([u, v]) => [u * RW, v * RH]);
+  const dd = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const w = Math.max(dd(qr[0], qr[1]), dd(qr[3], qr[2])), h = Math.max(dd(qr[0], qr[3]), dd(qr[1], qr[2]));
+  const st = $('#fl-stage').getBoundingClientRect();
+  const sc = Math.min((st.width - 20) / w, (st.height - 20) / h);
+  const W = w * sc, Hh = h * sc;
+  const src = pd.quad.map((pt) => { const [x, y] = back(pt); return [x * pd.nw, y * pd.nh]; });
+  const H = homography([[0, 0], [W, 0], [W, Hh], [0, Hh]], src); // 原图像素 → 预览框
+  Object.assign(box.style, { width: W + 'px', height: Hh + 'px' });
+  im.src = pd.src;
+  Object.assign(im.style, { width: pd.nw + 'px', height: pd.nh + 'px',
+    transform: `matrix3d(${H[0]},${H[3]},0,${H[6]},${H[1]},${H[4]},0,${H[7]},0,0,1,0,${H[2]},${H[5]},0,${H[8]})` });
+  box.hidden = false;
 }
 function flUpdate() {
   $$('#fl-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.k === FL.filter));
-  const img = $('#fl-img');
-  img.style.filter = pcss(FL);
-  img.style.transform = FL.rot ? `rotate(${FL.rot}deg)` : '';
+  for (const el of [$('#fl-img'), $('#fl-warp')]) {
+    el.style.filter = pcss(FL);
+    el.style.transform = FL.rot ? `rotate(${FL.rot}deg)` : '';
+  }
   $('#fl-bv').textContent = FL.b > 0 ? '+' + FL.b : FL.b;
   $('#fl-cv').textContent = FL.c > 0 ? '+' + FL.c : FL.c;
 }
@@ -1157,13 +1210,19 @@ $('#fl-c').addEventListener('input', (e) => { FL.c = +e.target.value; flUpdate()
 $('#fl-rl').addEventListener('click', () => { FL.rot -= 90; flUpdate(); });
 $('#fl-rr').addEventListener('click', () => { FL.rot += 90; flUpdate(); });
 $('#fl-reset').addEventListener('click', () => { FL.b = 0; FL.c = 0; $('#fl-b').value = 0; $('#fl-c').value = 0; flUpdate(); });
-$('#fl-back').addEventListener('click', () => { FL = null; closeCrop(); });
+$('#fl-back').addEventListener('click', async () => { const i = FL.i; await waitJob(FL.job); FL = null; closeCrop(i); });
+$('#fl-crop').addEventListener('click', () => {
+  const { filter, b, c, rot } = FL;
+  openCrop(FL.i, { filter, b, c, rot });
+});
 
 async function filterApply(all) {
   const d = curDoc();
-  const targets = all ? d.pages : [d.pages[FL.i]];
+  const i = FL.i;
+  await waitJob(FL.job);
+  const targets = all ? d.pages : [d.pages[i]];
   for (const p of targets) { p.filter = FL.filter; p.b = FL.b; p.c = FL.c; }
-  const p = d.pages[FL.i];
+  const p = d.pages[i];
   const deg = ((FL.rot % 360) + 360) % 360;
   if (deg) {
     busy(t('processing'));
@@ -1176,8 +1235,8 @@ async function filterApply(all) {
   }
   await touch(d);
   FL = null;
-  if (all) toast(t('appliedAll'));
-  closeCrop();
+  if (all) { toast(t('appliedAll')); renderSlides(); }
+  closeCrop(i);
   runOcrQueue();
 }
 $('#fl-ok').addEventListener('click', () => filterApply(false));
