@@ -712,14 +712,18 @@ async function openCollage(pages) {
   const d = curDoc();
   busy(t('loading'));
   try {
-    const imgs = [];
-    for (const p of pages) {
-      const bmp = await decode(await store.read(pagePath(d, p.f)));
-      imgs.push({ bmp, css: pcss(p) });
-    }
+    // 直接让 WebView 读图（不经过网页解码），打开快很多
+    const imgs = await Promise.all(pages.map(async (p) => {
+      const el = new Image();
+      el.src = store.url(pagePath(d, p.f));
+      await el.decode();
+      return { el, w: el.naturalWidth, h: el.naturalHeight, css: pcss(p), path: pagePath(d, p.f) };
+    }));
     const n = imgs.length;
     const def = n <= 2 ? 'id' : n === 3 ? '1x3' : n === 4 ? '2x2' : n <= 6 ? '2x3' : n <= 9 ? '3x3' : '3x4';
-    CL = { imgs, layout: def, scale: 100 };
+    let balance = true;
+    try { balance = localStorage.getItem('clBalance') !== '0'; } catch (e) {}
+    CL = { imgs, layout: def, scale: 100, balance };
   } catch (e) { busy(false); return toast(t('readFail')); }
   busy(false);
   $('#cl-layouts').innerHTML = LAYOUTS.map((L) => {
@@ -738,60 +742,66 @@ async function openCollage(pages) {
   });
 }
 
-/** 在 A4 画布上排好图片；返回放不下的数量 */
-function drawCollage(ctx, W, H, imgs, layoutKey, scalePct) {
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, W, H);
+/** 算出每张图在 A4 上的位置（预览和保存共用）；balance=true 时每张图在自己格子里居中，上下左右留白平均 */
+function collagePlan(W, H, imgs, layoutKey, scalePct, balance) {
   const mm = W / 210;
   const sc = scalePct / 100;
   const L = LAYOUTS.find((x) => x.k === layoutKey) || LAYOUTS[0];
-  const place = (img, x, y, w, h, fit) => {
-    // fit=true：等比例放进框里；false：铺满框（ID Card 用）
-    const iw = img.bmp.width, ih = img.bmp.height;
-    let dw = w, dh = h;
-    if (fit) { const s = Math.min(w / iw, h / ih); dw = iw * s; dh = ih * s; }
-    ctx.save();
-    if (img.css && img.css !== 'none') ctx.filter = img.css;
-    ctx.drawImage(img.bmp, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-    ctx.restore();
-  };
+  const out = [];
+  const fitIn = (im, x, y, w, h) => { const s = Math.min(w / im.w, h / im.h); const dw = im.w * s, dh = im.h * s; return [x + (w - dw) / 2, y + (h - dh) / 2, dw, dh]; };
   if (L.k === 'id') {
     // 身份证真实尺寸 85.6 × 54 mm。跟 ClearScanner 一样：正面在上半部、背面在下半部，中间拉开（方便剪开）
     const n = imgs.length;
     imgs.forEach((im, i) => {
-      const portrait = im.bmp.height > im.bmp.width;
+      const portrait = im.h > im.w;
       let bw = (portrait ? 54 : 85.6) * mm * sc, bh = (portrait ? 85.6 : 54) * mm * sc;
-      const slot = H / n;                            // 每张卡占一段
+      const slot = H / n;
       const cy = n === 2 ? (i === 0 ? H * 0.308 : H * 0.692) : slot * i + slot / 2;
-      const k = Math.min(1, (slot - 8 * mm) / bh);   // 太大放不下就缩
+      const k = Math.min(1, (slot - 8 * mm) / bh);
       bw *= k; bh *= k;
-      const ar = im.bmp.width / im.bmp.height, br = bw / bh;
-      place(im, (W - bw) / 2, cy - bh / 2, bw, bh, Math.abs(ar - br) / br > 0.12);
+      const ar = im.w / im.h, br = bw / bh;
+      const x = (W - bw) / 2, y = cy - bh / 2;
+      const r = Math.abs(ar - br) / br > 0.12 ? fitIn(im, x, y, bw, bh) : [x, y, bw, bh];
+      out.push({ i, x: r[0], y: r[1], w: r[2], h: r[3] });
     });
-    return 0;
+    return { items: out, extra: 0 };
   }
-  // 格子排版（跟 ClearScanner 一样）：格子固定、从左上开始排（A4 打印从左边开始，整齐）。
-  // 每张图放进自己那一格（100% 时撑满格子）；调小时贴着格子上方、以格子中线缩小，所以会各自分开
+  // 格子排版：格子固定、从左上开始排。每张图放进自己那一格（100% 时撑满格子）
   const M = 3 * mm;
   const cw = (W - M * 2) / L.c, ch = (H - M * 2) / L.r;
   const cells = L.c * L.r;
-  const list = imgs.slice(0, cells).map((im) => {
-    const s2 = Math.min(cw / im.bmp.width, ch / im.bmp.height);
-    return { im, w: im.bmp.width * s2, h: im.bmp.height * s2 };
+  const list = imgs.slice(0, cells).map((im, i) => {
+    const s2 = Math.min(cw / im.w, ch / im.h);
+    return { i, w: im.w * s2 * sc, h: im.h * s2 * sc, fh: im.h * s2 };
   });
   let y = M;
   for (let r = 0; r < L.r; r++) {
     const row = list.slice(r * L.c, r * L.c + L.c);
     if (!row.length) break;
-    const rowH = Math.max(...row.map((x) => x.h)); // 行高按这一行最高的图，行与行之间不留空
     row.forEach((it, c) => {
-      const w = it.w * sc, h = it.h * sc;
       const cx = M + c * cw + cw / 2;
-      place(it.im, cx - w / 2, y, w, h, false);
+      // 平均分布：在格子正中；不然贴着上一行（行与行之间不留空）
+      const top = balance ? M + r * ch + (ch - it.h) / 2 : y;
+      out.push({ i: it.i, x: cx - it.w / 2, y: top, w: it.w, h: it.h });
     });
-    y += rowH;
+    y += Math.max(...row.map((x) => x.fh));
   }
-  return Math.max(0, imgs.length - cells);
+  return { items: out, extra: Math.max(0, imgs.length - cells) };
+}
+
+/** 在画布上画出来；返回放不下的数量 */
+function drawCollage(ctx, W, H, imgs, layoutKey, scalePct, balance) {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+  const plan = collagePlan(W, H, imgs, layoutKey, scalePct, balance);
+  for (const it of plan.items) {
+    const im = imgs[it.i];
+    ctx.save();
+    if (im.css && im.css !== 'none') ctx.filter = im.css;
+    ctx.drawImage(im.el, it.x, it.y, it.w, it.h);
+    ctx.restore();
+  }
+  return plan.extra;
 }
 
 function clDraw() {
@@ -806,14 +816,16 @@ function clDraw() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
   cv.style.width = w + 'px'; cv.style.height = h + 'px';
-  const extra = drawCollage(cv.getContext('2d'), cv.width, cv.height, CL.imgs, CL.layout, CL.scale);
+  const extra = drawCollage(cv.getContext('2d'), cv.width, cv.height, CL.imgs, CL.layout, CL.scale, CL.balance);
+  $('#cl-bal').classList.toggle('on', CL.balance);
+  $('#cl-bal').hidden = CL.layout === 'id';
   $('#cl-note').textContent = extra ? t('collageExtra', { n: extra }) : CL.layout === 'id' && CL.scale === 100 ? t('idRealSize') : '';
 }
+$('#cl-bal').addEventListener('click', () => { CL.balance = !CL.balance; try { localStorage.setItem('clBalance', CL.balance ? '1' : '0'); } catch (e) {} clDraw(); });
 $('#cl-scale').addEventListener('input', (e) => { CL.scale = +e.target.value; clDraw(); });
 window.addEventListener('resize', () => { if (VIEW === 'collage') clDraw(); });
 
 function closeCollage() {
-  if (CL) CL.imgs.forEach((im) => freeBmp(im.bmp));
   CL = null;
   show('doc');
 }
@@ -823,18 +835,32 @@ async function collageApply() {
   const d = curDoc();
   busy(t('processing'));
   try {
-    const cv = document.createElement('canvas');
-    cv.width = 2480; cv.height = 3508; // A4 300dpi
-    drawCollage(cv.getContext('2d'), cv.width, cv.height, CL.imgs, CL.layout, CL.scale);
-    // 只压缩一次；缩略图直接从拼好的画面缩小（不再重新读一遍，快很多）
-    const blob = await cvBlob(cv, 0.9);
-    const tc = toCanvas(cv, { max: THUMB_MAX });
-    const tb = await cvBlob(tc, 0.75);
-    freeCv(tc); freeCv(cv);
-    const o = 'o_' + uid() + '.jpg', tn = 't_' + uid() + '.jpg';
-    await store.write(pagePath(d, o), blob);
-    await store.write(pagePath(d, tn), tb);
-    const p = { id: uid(), o, f: o, t: tn, rot: 0, quad: null, filter: 'none', b: 0, c: 0, size: blob.size, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' };
+    const W = 2480, H = 3508; // A4 300dpi
+    let o, tn, size;
+    if (NATIVE && YsNative) {
+      // 手机原生直接画好存档（不经过网页压缩、传输），快很多
+      try {
+        const plan = collagePlan(W, H, CL.imgs, CL.layout, CL.scale, CL.balance);
+        const r = await YsNative.collage({
+          w: W, h: H, outDir: store.uri('docs/' + d.id), id: 'c' + uid(), thumbMax: THUMB_MAX,
+          items: plan.items.map((it) => { const im = CL.imgs[it.i]; return { path: store.uri(im.path), x: it.x, y: it.y, w: it.w, h: it.h, ops: cssOps(im.css) }; }),
+        });
+        o = r.o; tn = r.t; size = r.size;
+      } catch (e) { o = null; }
+    }
+    if (!o) {
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      drawCollage(cv.getContext('2d'), W, H, CL.imgs, CL.layout, CL.scale, CL.balance);
+      const blob = await cvBlob(cv, 0.9);
+      const tc = toCanvas(cv, { max: THUMB_MAX });
+      const tb = await cvBlob(tc, 0.75);
+      freeCv(tc); freeCv(cv);
+      o = 'o_' + uid() + '.jpg'; tn = 't_' + uid() + '.jpg'; size = blob.size;
+      await store.write(pagePath(d, o), blob);
+      await store.write(pagePath(d, tn), tb);
+    }
+    const p = { id: uid(), o, f: o, t: tn, rot: 0, quad: null, filter: 'none', b: 0, c: 0, size, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' };
     // 拼好的这一页加进现在这份文件，放在选中的页面后面，画面留在文件页
     const sel = selPages();
     const after = sel.length ? d.pages.indexOf(sel[sel.length - 1]) + 1 : d.pages.length;

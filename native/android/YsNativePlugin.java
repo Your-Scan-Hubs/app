@@ -387,6 +387,99 @@ public class YsNativePlugin extends Plugin {
     }
 
     /** 套滤镜（灰度/对比/亮度/饱和度，跟网页 CSS 滤镜一样的算法）后存成 JPEG */
+    /** CSS 滤镜（grayscale/saturate/contrast/brightness）转成 ColorMatrix */
+    private static ColorMatrix buildMatrix(JSArray ops) throws org.json.JSONException {
+        ColorMatrix cm = new ColorMatrix();
+        if (ops != null) {
+            for (int i = 0; i < ops.length(); i++) {
+                JSObject op = JSObject.fromJSONObject(ops.getJSONObject(i));
+                String k = op.getString("k", "");
+                float v = (float) op.getDouble("v");
+                ColorMatrix m = new ColorMatrix();
+                switch (k) {
+                    case "grayscale": {
+                        float a = Math.max(0f, Math.min(1f, v));
+                        m.set(new float[]{
+                            0.2126f + 0.7874f * (1 - a), 0.7152f - 0.7152f * (1 - a), 0.0722f - 0.0722f * (1 - a), 0, 0,
+                            0.2126f - 0.2126f * (1 - a), 0.7152f + 0.2848f * (1 - a), 0.0722f - 0.0722f * (1 - a), 0, 0,
+                            0.2126f - 0.2126f * (1 - a), 0.7152f - 0.7152f * (1 - a), 0.0722f + 0.9278f * (1 - a), 0, 0,
+                            0, 0, 0, 1, 0});
+                        break;
+                    }
+                    case "saturate": {
+                        m.set(new float[]{
+                            0.2126f + 0.7874f * v, 0.7152f - 0.7152f * v, 0.0722f - 0.0722f * v, 0, 0,
+                            0.2126f - 0.2126f * v, 0.7152f + 0.2848f * v, 0.0722f - 0.0722f * v, 0, 0,
+                            0.2126f - 0.2126f * v, 0.7152f - 0.7152f * v, 0.0722f + 0.9278f * v, 0, 0,
+                            0, 0, 0, 1, 0});
+                        break;
+                    }
+                    case "contrast": {
+                        float t = (0.5f - 0.5f * v) * 255f;
+                        m.set(new float[]{v, 0, 0, 0, t, 0, v, 0, 0, t, 0, 0, v, 0, t, 0, 0, 0, 1, 0});
+                        break;
+                    }
+                    case "brightness": {
+                        m.set(new float[]{v, 0, 0, 0, 0, 0, v, 0, 0, 0, 0, 0, v, 0, 0, 0, 0, 0, 1, 0});
+                        break;
+                    }
+                    default:
+                        continue;
+                }
+                cm.postConcat(m);
+            }
+        }
+        return cm;
+    }
+
+    /** 拼图：几张图按位置画到一张 A4 上，直接存成页面（比网页里画再压缩快很多） */
+    @PluginMethod
+    public void collage(PluginCall call) {
+        final File outDir = fileFrom(call.getString("outDir"));
+        final String id = call.getString("id", String.valueOf(System.currentTimeMillis()));
+        final int W = call.getInt("w", 2480), H = call.getInt("h", 3508);
+        final int thumbMax = call.getInt("thumbMax", 420);
+        final JSArray items = call.getArray("items");
+        if (outDir == null || items == null) { call.reject("参数不对"); return; }
+        new Thread(() -> {
+            try {
+                Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+                Canvas c = new Canvas(out);
+                c.drawColor(Color.WHITE);
+                for (int i = 0; i < items.length(); i++) {
+                    JSObject it = JSObject.fromJSONObject(items.getJSONObject(i));
+                    File src = fileFrom(it.getString("path"));
+                    if (src == null || !src.exists()) continue;
+                    float x = (float) it.getDouble("x"), y = (float) it.getDouble("y");
+                    float w = (float) it.getDouble("w"), h = (float) it.getDouble("h");
+                    Bitmap b = decodeScaled(src, Math.max(1, Math.round(Math.max(w, h) * 1.2f)));
+                    if (b == null) continue;
+                    Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+                    JSONArrayHolder ops = new JSONArrayHolder(it);
+                    if (ops.arr != null) p.setColorFilter(new ColorMatrixColorFilter(buildMatrix(ops.arr)));
+                    c.drawBitmap(b, null, new android.graphics.RectF(x, y, x + w, y + h), p);
+                    b.recycle();
+                }
+                if (!outDir.exists()) outDir.mkdirs();
+                JSObject res = writePage(out, outDir, id, thumbMax, 90, true);
+                out.recycle();
+                call.resolve(res);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : "拼图失败");
+            }
+        }).start();
+    }
+
+    private static class JSONArrayHolder {
+        JSArray arr;
+        JSONArrayHolder(JSObject it) {
+            try {
+                org.json.JSONArray a = it.optJSONArray("ops");
+                if (a != null && a.length() > 0) arr = new JSArray(a.toString());
+            } catch (Exception e) { arr = null; }
+        }
+    }
+
     @PluginMethod
     public void renderFiltered(PluginCall call) {
         final File src = fileFrom(call.getString("path"));
@@ -402,46 +495,7 @@ public class YsNativePlugin extends Plugin {
             try {
                 Bitmap b = decodeScaled(src, maxSide);
                 if (b == null) { call.reject("无法读取图片"); return; }
-                ColorMatrix cm = new ColorMatrix();
-                if (ops != null) {
-                    for (int i = 0; i < ops.length(); i++) {
-                        JSObject op = JSObject.fromJSONObject(ops.getJSONObject(i));
-                        String k = op.getString("k", "");
-                        float v = (float) op.getDouble("v");
-                        ColorMatrix m = new ColorMatrix();
-                        switch (k) {
-                            case "grayscale": {
-                                float a = Math.max(0f, Math.min(1f, v));
-                                m.set(new float[]{
-                                    0.2126f + 0.7874f * (1 - a), 0.7152f - 0.7152f * (1 - a), 0.0722f - 0.0722f * (1 - a), 0, 0,
-                                    0.2126f - 0.2126f * (1 - a), 0.7152f + 0.2848f * (1 - a), 0.0722f - 0.0722f * (1 - a), 0, 0,
-                                    0.2126f - 0.2126f * (1 - a), 0.7152f - 0.7152f * (1 - a), 0.0722f + 0.9278f * (1 - a), 0, 0,
-                                    0, 0, 0, 1, 0});
-                                break;
-                            }
-                            case "saturate": {
-                                m.set(new float[]{
-                                    0.2126f + 0.7874f * v, 0.7152f - 0.7152f * v, 0.0722f - 0.0722f * v, 0, 0,
-                                    0.2126f - 0.2126f * v, 0.7152f + 0.2848f * v, 0.0722f - 0.0722f * v, 0, 0,
-                                    0.2126f - 0.2126f * v, 0.7152f - 0.7152f * v, 0.0722f + 0.9278f * v, 0, 0,
-                                    0, 0, 0, 1, 0});
-                                break;
-                            }
-                            case "contrast": {
-                                float t = (0.5f - 0.5f * v) * 255f;
-                                m.set(new float[]{v, 0, 0, 0, t, 0, v, 0, 0, t, 0, 0, v, 0, t, 0, 0, 0, 1, 0});
-                                break;
-                            }
-                            case "brightness": {
-                                m.set(new float[]{v, 0, 0, 0, 0, 0, v, 0, 0, 0, 0, 0, v, 0, 0, 0, 0, 0, 1, 0});
-                                break;
-                            }
-                            default:
-                                continue;
-                        }
-                        cm.postConcat(m);
-                    }
-                }
+                ColorMatrix cm = buildMatrix(ops);
                 Bitmap out = Bitmap.createBitmap(b.getWidth(), b.getHeight(), Bitmap.Config.ARGB_8888);
                 Canvas c = new Canvas(out);
                 c.drawColor(Color.WHITE);
