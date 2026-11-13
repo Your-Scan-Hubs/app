@@ -18,7 +18,7 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         String a = intent.getAction();
-        if ((Intent.ACTION_SEND.equals(a) || Intent.ACTION_SEND_MULTIPLE.equals(a)) && getBridge() != null) {
+        if ((Intent.ACTION_SEND.equals(a) || Intent.ACTION_SEND_MULTIPLE.equals(a) || Intent.ACTION_VIEW.equals(a)) && getBridge() != null) {
             getBridge().triggerWindowJSEvent("ysShare");
         }
     }

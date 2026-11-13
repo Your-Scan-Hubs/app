@@ -270,6 +270,11 @@ public class YsNativePlugin extends Plugin {
             view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             Intent chooser = Intent.createChooser(view, call.getString("title", "Open with"));
             chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // 本 app 也能"打开"Word 了，选单里要排除自己，免得转圈回来
+            if (Build.VERSION.SDK_INT >= 24) {
+                chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new android.content.ComponentName[]{
+                    new android.content.ComponentName(ctx, MainActivity.class)});
+            }
             getActivity().startActivity(chooser);
             call.resolve();
         } catch (Exception e) {
@@ -284,6 +289,44 @@ public class YsNativePlugin extends Plugin {
             getActivity().setIntent(new Intent(Intent.ACTION_MAIN));
             call.resolve();
         });
+    }
+
+    /** 用"打开方式"选了本 app：把文件复制到缓存，返回路径、名字、类型 */
+    @PluginMethod
+    public void getViewIntent(PluginCall call) {
+        Intent it = getActivity().getIntent();
+        JSObject r = new JSObject();
+        if (it == null || !Intent.ACTION_VIEW.equals(it.getAction()) || it.getData() == null) { call.resolve(r); return; }
+        final Uri uri = it.getData();
+        final String type = it.getType() != null ? it.getType() : getContext().getContentResolver().getType(uri);
+        new Thread(() -> {
+            try {
+                String name = null;
+                if ("content".equals(uri.getScheme())) {
+                    try (android.database.Cursor c = getContext().getContentResolver().query(uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                        if (c != null && c.moveToFirst()) name = c.getString(0);
+                    } catch (Exception ignore) {}
+                }
+                if (name == null) name = uri.getLastPathSegment();
+                if (name == null || name.isEmpty()) name = "file";
+                name = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+                File dir = new File(getContext().getCacheDir(), "viewin");
+                if (!dir.exists()) dir.mkdirs();
+                File out = new File(dir, name);
+                try (InputStream in = getContext().getContentResolver().openInputStream(uri);
+                     OutputStream os = new FileOutputStream(out)) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                }
+                r.put("path", Uri.fromFile(out).toString());
+                r.put("name", name);
+                r.put("type", type != null ? type : "");
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : "读取失败");
+            }
+        }).start();
     }
 
     /* ---------- 相册多选 + 直接存成页面（全部在原生层，最快） ---------- */
@@ -722,6 +765,11 @@ public class YsNativePlugin extends Plugin {
             send.setSelector(new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")));
             Intent chooser = Intent.createChooser(send, call.getString("title", "Email"));
             chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // 本 app 也能"打开"Word 了，选单里要排除自己，免得转圈回来
+            if (Build.VERSION.SDK_INT >= 24) {
+                chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new android.content.ComponentName[]{
+                    new android.content.ComponentName(ctx, MainActivity.class)});
+            }
             getActivity().startActivity(chooser);
             call.resolve();
         } catch (Exception e) {

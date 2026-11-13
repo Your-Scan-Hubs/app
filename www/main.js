@@ -12,7 +12,26 @@ function finishShare() {
 let shareBusy = false;
 /** 别的 app 分享进来的文件：在主程序里直接建新文件 */
 async function checkShareIntent() {
-  if (!SendIntent || shareBusy) return;
+  if (shareBusy) return;
+  // "打开方式"选了本 app（例如在 WhatsApp 点 Word / PDF 文件）
+  if (YsNative) {
+    let v = null;
+    try { v = await YsNative.getViewIntent(); } catch (e) { toast(t('readImgsFail')); }
+    if (v && v.path) {
+      shareBusy = true;
+      try {
+        try { await YsNative.clearIntent(); } catch (e) {}
+        closeSheet(null);
+        closeDrawer();
+        busy(false);
+        const type = v.type && !v.type.includes('*') ? v.type : '';
+        await newDocFrom([{ path: v.path, name: v.name, type }], { ask: isImage({ type }, v.name) });
+        try { await FS.deleteFile({ path: v.path }); } catch (e) {}
+      } finally { busy(false); shareBusy = false; }
+      return;
+    }
+  }
+  if (!SendIntent) return;
   let r;
   try { r = await SendIntent.checkSendIntentReceived(); } catch (e) { return; }
   if (!r || !r.url) return;
