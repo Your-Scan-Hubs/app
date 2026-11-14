@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -200,9 +202,7 @@ jobs:
 
       # 自动上传到 Play Store 内部测试（设好 PLAY_SERVICE_ACCOUNT_JSON 才会跑；第一次要先在 Play Console 手动上传一次）
       - name: Upload to Google Play (internal testing)
-        env:
-          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-        if: ${{ env.PLAY_JSON != '' && hashFiles('YourScanner.aab') != '' }}
+        if: ${{ env.HAS_PLAY == 'true' && hashFiles('YourScanner.aab') != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
