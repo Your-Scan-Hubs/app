@@ -1,3 +1,4 @@
+let FROM_PLAY = false;
 /* =========================================================
    首页
    ========================================================= */
@@ -39,7 +40,7 @@ function openDrawer() {
   h += row('backup', I.backup, t('backupRestore'));
   h += row('settings', I.gear, t('settings'));
   h += sec(t('secApp'));
-  h += row('update', I.download, t('checkUpdate'));
+  if (!FROM_PLAY) h += row('update', I.download, t('checkUpdate'));
   h += row('help', I.help, t('help'));
   h += row('about', I.info, t('about'));
   h += '</div>';

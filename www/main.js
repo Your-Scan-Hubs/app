@@ -94,6 +94,8 @@ if (AppP) {
     toast(t('loadFail') + (e.message || e), 5000);
   }
   if (AppP) { try { APP_VER = (await AppP.getInfo()).version; } catch (e) {} }
+  // Play Store 装的：更新交给 Play Store，不显示“检查更新”
+  if (YsNative) { try { FROM_PLAY = (await YsNative.installer()).installer === 'com.android.vending'; } catch (e) {} }
   await autoPurge();
   applyLang();
   await checkShareIntent();

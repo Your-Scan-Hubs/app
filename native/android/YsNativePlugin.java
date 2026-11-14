@@ -282,6 +282,20 @@ public class YsNativePlugin extends Plugin {
         }
     }
 
+    /** 从哪里安装的（Play Store 安装的版本不显示"检查更新"，更新交给 Play Store） */
+    @PluginMethod
+    public void installer(PluginCall call) {
+        String who = null;
+        try {
+            Context ctx = getContext();
+            if (Build.VERSION.SDK_INT >= 30) who = ctx.getPackageManager().getInstallSourceInfo(ctx.getPackageName()).getInstallingPackageName();
+            else who = ctx.getPackageManager().getInstallerPackageName(ctx.getPackageName());
+        } catch (Exception ignore) {}
+        JSObject r = new JSObject();
+        r.put("installer", who != null ? who : "");
+        call.resolve(r);
+    }
+
     /** 分享处理完后清掉，免得下次回到 app 又导入一次 */
     @PluginMethod
     public void clearIntent(PluginCall call) {
