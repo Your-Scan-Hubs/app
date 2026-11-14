@@ -170,7 +170,9 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew $TASK || (echo "重试一次" && sleep 30 && ./gradlew $TASK)
-          keytool -printcert -jarfile $APK | grep SHA256
+          # minSdk ≥ 24 时只有 v2 签名，keytool -jarfile 读不到，改用 apksigner
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs $APK | grep -i "SHA-256" || true
           cp $APK ../YourScanner.apk
           # Play Store 上架用的 AAB（只有正式签名才打）
           if [ -n "$KEYSTORE_PASSWORD" ]; then
