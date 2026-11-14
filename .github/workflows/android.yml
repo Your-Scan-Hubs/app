@@ -37,7 +37,8 @@ jobs:
           grep -E "versionCode|versionName" android/app/build.gradle
 
           # Play Store 要求：新 app 要以 Android 16（API 36）为目标
-          sed -i 's/compileSdkVersion = 35/compileSdkVersion = 36/; s/targetSdkVersion = 35/targetSdkVersion = 36/' android/variables.gradle
+          # Play 自动保护要求 minSdk ≥ 24（Android 7.0）
+          sed -i 's/compileSdkVersion = 35/compileSdkVersion = 36/; s/targetSdkVersion = 35/targetSdkVersion = 36/; s/minSdkVersion = 23/minSdkVersion = 24/' android/variables.gradle
           echo "android.suppressUnsupportedCompileSdk=36" >> android/gradle.properties
           cat android/variables.gradle
 
