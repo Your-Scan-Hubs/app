@@ -330,8 +330,11 @@ const polyArea = (q) => Math.abs(q.reduce((a, p, i) => { const n = q[(i + 1) % q
 /** 返回归一化的四角 [[x,y]…]（左上、右上、右下、左下），找不到返回 null */
 async function detectQuad(blob) {
   const bmp = await decode(blob);
+  try { return detectQuadImg(bmp); } finally { freeBmp(bmp); }
+}
+/** 从已解码的图找文件四个角（没找到返回 null） */
+function detectQuadImg(bmp) {
   const cv = toCanvas(bmp, { max: 320 });
-  freeBmp(bmp);
   const W = cv.width, H = cv.height;
   const ctx = cv.getContext('2d');
   // 先模糊一下，去掉文字细节
@@ -1006,6 +1009,11 @@ async function openCrop(i, keep) {
     img.src = store.url(pagePath(d, p.o));
     await img.decode();
     CR = { i, keep, rot: p.rot || 0, q: (p.quad || FULL_QUAD).map((pt) => [...pt]), nw: img.naturalWidth, nh: img.naturalHeight };
+    // 背景里先找好文件的边（自动裁边按钮 + 拉的时候吸附）
+    const me = CR;
+    setTimeout(async () => {
+      try { const im2 = new Image(); im2.src = img.src; await im2.decode(); const q = detectQuadImg(im2); if (CR === me) CR.det = q; } catch (e) {}
+    }, 30);
     cropDims();
     show('crop');
     requestAnimationFrame(drawCrop);
@@ -1053,6 +1061,51 @@ function drawCrop() {
     ${P.map((p, k) => `<circle class="hd" data-c="${k}" cx="${p[0]}" cy="${p[1]}" r="12" fill="rgba(34,211,91,.35)" stroke="#22D35B" stroke-width="3"/>`).join('')}`;
 }
 
+/* ---- 辅助裁边：拉角/拉边靠近文件边缘时自动吸上去（像 ClearScanner） ---- */
+function cropTargets() {
+  // 找到的文件四角（换算成目前旋转后的坐标）+ 图片四角
+  const pts = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  const edges = [];
+  if (CR.det) {
+    const q = rotateQuad(CR.det, CR.rot);
+    pts.push(...q);
+    q.forEach((p, k) => edges.push([p, q[(k + 1) % 4]]));
+  }
+  edges.push([[0, 0], [1, 0]], [[1, 0], [1, 1]], [[1, 1], [0, 1]], [[0, 1], [0, 0]]);
+  return { pts, edges };
+}
+function snapPoint(p) {
+  const r = cropRect(), th = 22;
+  let best = null, bd = th;
+  for (const t of cropTargets().pts) {
+    const dd = Math.hypot((t[0] - p[0]) * r.w, (t[1] - p[1]) * r.h);
+    if (dd < bd) { bd = dd; best = [...t]; }
+  }
+  return best;
+}
+function snapEdge([a, b]) {
+  const r = cropRect(), th = 26;
+  const px = (p) => [p[0] * r.w, p[1] * r.h];
+  // 点到直线距离
+  const dl = (p, [u, v]) => { const [x, y] = px(p), [x1, y1] = px(u), [x2, y2] = px(v); const L = Math.hypot(x2 - x1, y2 - y1) || 1; return Math.abs((x2 - x1) * (y1 - y) - (x1 - x) * (y2 - y1)) / L; };
+  // 投影到直线上
+  const proj = (p, [u, v]) => { const dx = v[0] - u[0], dy = v[1] - u[1]; const L2 = dx * dx + dy * dy || 1; const k = ((p[0] - u[0]) * dx + (p[1] - u[1]) * dy) / L2; return [Math.max(0, Math.min(1, u[0] + k * dx)), Math.max(0, Math.min(1, u[1] + k * dy))]; };
+  let best = null, bd = th;
+  for (const e of cropTargets().edges) {
+    // 方向要差不多（横的对横的、直的对直的）
+    const v1 = [b[0] - a[0], b[1] - a[1]], v2 = [e[1][0] - e[0][0], e[1][1] - e[0][1]];
+    const cos = Math.abs(v1[0] * v2[0] + v1[1] * v2[1]) / ((Math.hypot(...v1) * Math.hypot(...v2)) || 1);
+    if (cos < 0.97) continue;
+    const dd = Math.max(dl(a, e), dl(b, e));
+    if (dd < bd) { bd = dd; best = [proj(a, e), proj(b, e)]; }
+  }
+  return best;
+}
+function buzz(on, drag) {
+  if (on && !drag.snapped) { try { navigator.vibrate && navigator.vibrate(12); } catch (e) {} }
+  drag.snapped = on;
+}
+
 (function cropDrag() {
   const svg = $('#cr-svg');
   let drag = null;
@@ -1081,7 +1134,7 @@ function drawCrop() {
       });
     }
     if (!best) return;
-    drag = { ...best, last: pos(e) };
+    drag = { ...best, last: pos(e), raw: null, snapped: false };
     svg.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
@@ -1089,11 +1142,18 @@ function drawCrop() {
     if (!drag) return;
     const [x, y] = pos(e);
     if (drag.c != null) {
-      CR.q[drag.c] = [clamp(x), clamp(y)];
+      drag.raw = [clamp(x), clamp(y)];
+      const sp = snapPoint(drag.raw);
+      CR.q[drag.c] = sp || drag.raw;
+      buzz(!!sp, drag);
     } else {
       const dx = x - drag.last[0], dy = y - drag.last[1];
       const a = drag.e, b = (drag.e + 1) % 4;
-      for (const k of [a, b]) CR.q[k] = [clamp(CR.q[k][0] + dx), clamp(CR.q[k][1] + dy)];
+      drag.raw = drag.raw || [[...CR.q[a]], [...CR.q[b]]];
+      drag.raw = drag.raw.map((p) => [clamp(p[0] + dx), clamp(p[1] + dy)]);
+      const se = snapEdge(drag.raw);
+      [CR.q[a], CR.q[b]] = se || drag.raw.map((p) => [...p]);
+      buzz(!!se, drag);
     }
     drag.last = [x, y];
     drawCrop();
@@ -1168,6 +1228,12 @@ $('#cr-back').addEventListener('click', () => {
 $('#cr-full').addEventListener('click', () => { CR.q = FULL_QUAD.map((p) => [...p]); drawCrop(); });
 $('#cr-rl').addEventListener('click', () => cropRotate(-90));
 $('#cr-rr').addEventListener('click', () => cropRotate(90));
+$('#cr-auto').addEventListener('click', () => {
+  if (!CR) return;
+  if (!CR.det) { toast(t('noEdges')); return; }
+  CR.q = rotateQuad(CR.det, CR.rot).map((p) => [...p]);
+  drawCrop();
+});
 $('#cr-ok').addEventListener('click', () => { if (CR) cropApply(); });
 window.addEventListener('resize', () => { if (VIEW === 'crop') drawCrop(); });
 
