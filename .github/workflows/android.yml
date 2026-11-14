@@ -36,6 +36,11 @@ jobs:
           sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
           grep -E "versionCode|versionName" android/app/build.gradle
 
+          # Play Store 要求：新 app 要以 Android 16（API 36）为目标
+          sed -i 's/compileSdkVersion = 35/compileSdkVersion = 36/; s/targetSdkVersion = 35/targetSdkVersion = 36/' android/variables.gradle
+          echo "android.suppressUnsupportedCompileSdk=36" >> android/gradle.properties
+          cat android/variables.gradle
+
           # App 图标（蓝底恐龙扫描）+ 启动画面（日间 A / 夜间 C）
           cp -r native/icon/android/. android/app/src/main/res/
           printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#1F5EFF</color>\n</resources>\n' > android/app/src/main/res/values/ic_launcher_background.xml
@@ -166,12 +171,19 @@ jobs:
           ./gradlew $TASK || (echo "重试一次" && sleep 30 && ./gradlew $TASK)
           keytool -printcert -jarfile $APK | grep SHA256
           cp $APK ../YourScanner.apk
+          # Play Store 上架用的 AAB（只有正式签名才打）
+          if [ -n "$KEYSTORE_PASSWORD" ]; then
+            ./gradlew bundleRelease || (sleep 20 && ./gradlew bundleRelease)
+            cp app/build/outputs/bundle/release/app-release.aab ../YourScanner.aab
+          fi
           rm -f ../native/android/release.keystore
 
       - uses: actions/upload-artifact@v4
         with:
           name: YourScanner-apk
-          path: YourScanner.apk
+          path: |
+            YourScanner.apk
+            YourScanner.aab
 
       - name: Publish to Releases
         env:
@@ -180,4 +192,5 @@ jobs:
           cp YourScanner.apk YourScan.apk
           gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --title "YourScanner Android 最新版" --notes "每次更新后自动替换。手机上直接下载 YourScanner.apk 安装即可（覆盖安装，不会丢失文件）。" --prerelease
           gh release upload android-latest YourScanner.apk YourScan.apk --clobber
+          if [ -f YourScanner.aab ]; then gh release upload android-latest YourScanner.aab --clobber; fi
           gh release edit android-latest --notes "版本 1.0.${{ github.run_number }}。手机上直接下载 YourScanner.apk 安装即可（覆盖安装，不会丢失文件）。"
