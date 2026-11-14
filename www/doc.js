@@ -701,6 +701,7 @@ $('#sel-collage').addEventListener('click', () => { const ps = selPages(); if (p
    ========================================================= */
 const LAYOUTS = [
   { k: 'id', n: 'ID Card' },
+  { k: '1x1', c: 1, r: 1 },
   { k: '1x2', c: 1, r: 2 }, { k: '2x1', c: 2, r: 1 },
   { k: '1x3', c: 1, r: 3 }, { k: '3x1', c: 3, r: 1 },
   { k: '2x2', c: 2, r: 2 }, { k: '2x3', c: 2, r: 3 }, { k: '3x2', c: 3, r: 2 },
@@ -720,7 +721,7 @@ async function openCollage(pages) {
       return { el, w: el.naturalWidth, h: el.naturalHeight, css: pcss(p), path: pagePath(d, p.f) };
     }));
     const n = imgs.length;
-    const def = n <= 2 ? 'id' : n === 3 ? '1x3' : n === 4 ? '2x2' : n <= 6 ? '2x3' : n <= 9 ? '3x3' : '3x4';
+    const def = n === 1 ? '1x1' : n === 2 ? 'id' : n === 3 ? '1x3' : n === 4 ? '2x2' : n <= 6 ? '2x3' : n <= 9 ? '3x3' : '3x4';
     let balance = true;
     try { balance = localStorage.getItem('clBalance') !== '0'; } catch (e) {}
     CL = { imgs, layout: def, scale: 100, balance };
