@@ -590,6 +590,8 @@ async function settingsSheet() {
     { icon: I.docs, label: t('defPaper'), right: t(PAPER[s.paper]), value: 'p' },
     { sec: t('secFolders') },
     { icon: I.folder, label: t('manageFolders'), right: String(DB.folders.length), value: 'f' },
+    { sec: t('secSupport') },
+    { icon: I.heart, label: t('supportAd'), right: '', value: 'ad' },
   ], t('storageNote', { n: live().length, size: fmtSize(total) })), (sh) => {
     $$('.set-row', sh).forEach((b) => b.addEventListener('click', () => closeSheet(b.dataset.v)));
   });
@@ -605,6 +607,7 @@ async function settingsSheet() {
     if (k) { s.theme = k; await saveDB(); applyTheme(); }
     return;
   }
+  if (v === 'ad') { return supportAdSheet(); }
   if (v === 'lang') { return langMenu(); }
   if (v === 'lang_old') {
     const cur = s.lang || 'auto';
@@ -736,6 +739,36 @@ function updateSheet() {
       $('#up-msg', sh).textContent = !latest ? '' : verNum(latest) > verNum(cur) ? t('updateAvail') : t('upToDate');
     }).catch(() => { if ($('#up-latest', sh)) { $('#up-latest', sh).textContent = '—'; $('#up-msg', sh).textContent = t('noNetwork'); } });
   });
+}
+
+/** 设置 → 支持我们：用户自己点了才播放奖励广告（不会自动弹出）
+ *  AD_TESTING = true 时播放 Google 测试广告；Play 正式上架并在 AdMob 关联商店后改成 false */
+const AD_UNIT = 'ca-app-pub-4018084613463777/1349677355';
+const AD_TESTING = true;
+let adReady = false;
+async function supportAdSheet() {
+  const go = await openSheet(`
+    <div class="about">
+      <img class="lg-l" src="img/logo-light.png" alt="" /><img class="lg-d" src="img/logo-dark.png" alt="" />
+      <h3>${esc(t('supportTitle'))}</h3>
+      <p>${esc(t('supportBody'))}</p>
+    </div>
+    <div class="btns"><button id="ad-no">${esc(t('cancel'))}</button><button class="primary" id="ad-go">${esc(t('supportWatch'))}</button></div>`, (sh) => {
+    $('#ad-no', sh).onclick = () => closeSheet(null);
+    $('#ad-go', sh).onclick = () => closeSheet(true);
+  });
+  if (!go) return;
+  if (!AdMob) return toast(t('supportUnavailable'));
+  toast(t('supportLoading'), 8000);
+  try {
+    if (!adReady) { await AdMob.initialize({}); adReady = true; }
+    await AdMob.prepareRewardVideoAd({ adId: AD_UNIT, isTesting: AD_TESTING });
+    const r = await AdMob.showRewardVideoAd();
+    toast(t('supportThanks'), 3500);
+  } catch (e) {
+    console.warn('ad', e);
+    toast(t('supportNoAd'), 3500);
+  }
 }
 
 /** 设置页：分组 + 图标 + 右边的值和箭头，底部是存储说明 */

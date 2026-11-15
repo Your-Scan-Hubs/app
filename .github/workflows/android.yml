@@ -148,6 +148,14 @@ jobs:
               s = s[:m.start()] + block + s[m.end():]
           if 'mlkit.vision.DEPENDENCIES' not in s:
               s = s.replace('</application>', meta + '    </application>')
+          # AdMob（设置 → 支持我们：看奖励广告）
+          admob = '''
+                  <meta-data
+                      android:name="com.google.android.gms.ads.APPLICATION_ID"
+                      android:value="ca-app-pub-4018084613463777~9665161971" />
+          '''
+          if 'gms.ads.APPLICATION_ID' not in s:
+              s = s.replace('</application>', admob + '    </application>')
           open(p, 'w').write(s)
           print(s)
           PY
