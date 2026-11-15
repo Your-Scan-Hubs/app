@@ -85,7 +85,11 @@ async function buildPages(docId, items, filter) {
       } else if (isDocx(kind, it.name) || isXlsx(kind, it.name)) {
         // Word / Excel 在 app 里直接排成页面（不用别的 app）
         busy(pre + t('converting'));
+        SHOT_FAIL = '';
+        const t0 = Date.now();
         const bl = isDocx(kind, it.name) ? await docxToBlobs(await getBlob()) : await xlsxToBlobs(await getBlob());
+        // 显示花了多久；用了慢的方法会写原因，方便查
+        setTimeout(() => toast(t('convertedIn', { n: bl.length, s: ((Date.now() - t0) / 1000).toFixed(1) }) + (SHOT_FAIL ? ' · slow: ' + SHOT_FAIL : ''), SHOT_FAIL ? 8000 : 3000), 300);
         for (let i = 0; i < bl.length; i++) {
           busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
           pages.push(await importImage(docId, bl[i], filter));
@@ -248,17 +252,19 @@ const isXlsx = (blob, name) => /spreadsheetml/i.test((blob && blob.type) || '') 
 const PAGE_W = 1240, PAGE_H = 1754; // A4 150dpi
 
 /** 把一个画好的 HTML 区块拍成图 */
+let SHOT_FAIL = '';
 async function shotEl(el, scale) {
   // 快的方法：浏览器自己画（SVG foreignObject），失败才用 html2canvas
-  try { return await svgShot(el, scale); } catch (e) {}
+  try { return await svgShot(el, scale); } catch (e) { SHOT_FAIL = SHOT_FAIL || String(e && (e.message || e.name || e)).slice(0, 80) || 'error'; }
   await loadScript('vendor/html2canvas.min.js');
   return html2canvas(el, { scale, backgroundColor: '#ffffff', logging: false, useCORS: true });
 }
 async function svgShot(el, scale) {
   const w = Math.ceil(el.offsetWidth), h = Math.ceil(el.offsetHeight);
   const host = el.closest('.offhost') || document;
-  const css = [...host.querySelectorAll('style')].map((x) => x.textContent).join('\n');
-  const xml = new XMLSerializer().serializeToString(el);
+  const css = [...host.querySelectorAll('style')].map((x) => x.textContent).join('\n').replace(/@font-face\s*{[^}]*blob:[^}]*}/g, '');
+  // blob: 连结（嵌入字体等）放进 SVG 会画不出来，先拿掉
+  const xml = new XMLSerializer().serializeToString(el).replace(/blob:[^"')\s]+/g, '');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="background:#fff;width:${w}px"><style>${css.replace(/<\/style/gi, '')}</style>${xml}</div></foreignObject></svg>`;
   const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   {
