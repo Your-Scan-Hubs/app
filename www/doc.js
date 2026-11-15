@@ -85,15 +85,18 @@ async function buildPages(docId, items, filter) {
       } else if (isDocx(kind, it.name) || isXlsx(kind, it.name)) {
         // Word / Excel 在 app 里直接排成页面（不用别的 app）
         busy(pre + t('converting'));
-        SHOT_FAIL = '';
+        SHOT_FAIL = ''; TM = {};
         const t0 = Date.now();
         const bl = isDocx(kind, it.name) ? await docxToBlobs(await getBlob()) : await xlsxToBlobs(await getBlob());
-        // 显示花了多久；用了慢的方法会写原因，方便查
-        setTimeout(() => toast(t('convertedIn', { n: bl.length, s: ((Date.now() - t0) / 1000).toFixed(1) }) + (SHOT_FAIL ? ' · slow: ' + SHOT_FAIL : ''), SHOT_FAIL ? 8000 : 3000), 300);
+        const tc = Date.now(); const conv = tc - t0;
         for (let i = 0; i < bl.length; i++) {
           busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
           pages.push(await importImage(docId, bl[i], filter));
         }
+        TM.imp = Date.now() - tc;
+        // 显示花了多久（分段：render 排版 / shot 拍图 / imp 存入），慢方法会写原因
+        const tmS = ['render', 'shot', 'imp'].map((k) => k + ' ' + ((TM[k] || 0) / 1000).toFixed(1)).join(' · ');
+        setTimeout(() => toast(t('convertedIn', { n: bl.length, s: ((Date.now() - t0) / 1000).toFixed(1) }) + ' · ' + tmS + (SHOT_FAIL ? ' · slow: ' + SHOT_FAIL : ''), 8000), 300);
       } else if (isText(kind, it.name)) {
         for (const b of await textToBlobs(await getBlob())) pages.push(await importImage(docId, b, filter));
       } else if (isImage(kind, it.name) || !DOC_EXT.test(it.name || '')) {
@@ -253,9 +256,12 @@ const PAGE_W = 1240, PAGE_H = 1754; // A4 150dpi
 
 /** 把一个画好的 HTML 区块拍成图 */
 let SHOT_FAIL = '';
+let TM = {};
+const tick = (k, t0) => { TM[k] = (TM[k] || 0) + (Date.now() - t0); };
 async function shotEl(el, scale) {
   // 快的方法：浏览器自己画（SVG foreignObject），失败才用 html2canvas
-  try { return await svgShot(el, scale); } catch (e) { SHOT_FAIL = SHOT_FAIL || String(e && (e.message || e.name || e)).slice(0, 80) || 'error'; }
+  const t0 = Date.now();
+  try { const r = await svgShot(el, scale); tick('shot', t0); return r; } catch (e) { SHOT_FAIL = SHOT_FAIL || String(e && (e.message || e.name || e)).slice(0, 80) || 'error'; }
   await loadScript('vendor/html2canvas.min.js');
   return html2canvas(el, { scale, backgroundColor: '#ffffff', logging: false, useCORS: true });
 }
@@ -307,12 +313,14 @@ async function docxToBlobs(blob) {
   const host = offHost(1400);
   const out = [];
   try {
+    const tr = Date.now();
     await docx.renderAsync(blob, host, null, {
       inWrapper: false, breakPages: true, ignoreLastRenderedPageBreak: false, useBase64URL: true,
       renderHeaders: true, renderFooters: true, renderFootnotes: true, experimental: true, ignoreFonts: false,
     });
     await new Promise((r) => setTimeout(r, 60));
     try { await document.fonts.ready; } catch (e) {}
+    tick('render', tr);
     for (const sec of host.querySelectorAll('section.docx')) {
       const pw = sec.offsetWidth;
       const mh = sec.style.minHeight || '';
