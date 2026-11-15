@@ -280,7 +280,10 @@ async function svgShot(el, scale) {
   const css = [...host.querySelectorAll('style')].map((x) => x.textContent).join('\n').replace(/@font-face\s*{[^}]*blob:[^}]*}/g, '');
   // blob: 连结（嵌入字体等）放进 SVG 会画不出来，先拿掉
   const xml = new XMLSerializer().serializeToString(el).replace(/blob:[^"')\s]+/g, '');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="background:#fff;width:${w}px"><style>${css.replace(/<\/style/gi, '')}</style>${xml}</div></foreignObject></svg>`;
+  // 外面继承来的字体/行高也要带进去，不然里面排出来的行高会和屏幕上量的不一样，切页就会切歪
+  const pcs = getComputedStyle(el.parentElement || el);
+  const inh = ['font-family', 'font-size', 'line-height', 'font-weight', 'color', 'letter-spacing', 'word-break', 'white-space'].map((k) => k + ':' + pcs.getPropertyValue(k)).join(';').replace(/"/g, "'");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="background:#fff;width:${w}px;${inh}"><style>${css.replace(/<\/style/gi, '')}</style>${xml}</div></foreignObject></svg>`;
   const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   {
     const img = new Image();
@@ -347,7 +350,9 @@ async function docxToBlobs(blob) {
       if (total <= ph + 4) { const cv = await shotEl(sec, scale); out.push(await a4Blob(cv)); freeCv(cv); continue; }
       // 太长：整段拍一张大图，再按段落/表格行/图片的底边切成一页一页
       const top0 = sec.getBoundingClientRect().top;
+      // 表格里面只在「整行之间」切，不切进单元格里的段落
       const cuts = [...sec.querySelectorAll('p, tr, li, img, h1, h2, h3, h4, h5, h6, table')]
+        .filter((e) => e.tagName === 'TR' ? !e.parentElement.closest('td, th') : !e.closest('td, th'))
         .map((e) => e.getBoundingClientRect().bottom - top0).filter((y) => y > padT).sort((x, y) => x - y);
       const usable = ph - padT - padB;
       const contentEnd = total - padB;
