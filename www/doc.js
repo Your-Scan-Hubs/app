@@ -35,6 +35,13 @@ async function importImage(docId, blob, filter) {
   return { id: uid(), o, f: o, t: tn, rot: 0, quad: null, filter: filter || 'none', b: 0, c: 0, size: ob.size, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' };
 }
 
+/** 已经排好的 A4 页图：直接存，不再解码/重压（省很多时间） */
+async function storeConverted(docId, blob, filter) {
+  const o = 'o_' + uid() + '.jpg', tn = 't_' + uid() + '.jpg';
+  await store.write(`docs/${docId}/${o}`, blob);
+  await store.write(`docs/${docId}/${tn}`, blob.thumb || blob);
+  return { id: uid(), o, f: o, t: tn, rot: 0, quad: null, filter: filter || 'none', b: 0, c: 0, size: blob.size, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' };
+}
 const mkPage = (r, filter) => ({ id: uid(), o: r.o, f: r.o, t: r.t, rot: 0, quad: null, filter: filter || 'none', b: 0, c: 0, size: r.size || 0, created: Date.now(), text: '', ocr: NATIVE ? 'pending' : 'na' });
 let lastUnsupported = [];
 const DOC_EXT = /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|zip|rar|7z|apk|mp4|mov|mp3|m4a|wav)$/i;
@@ -87,15 +94,17 @@ async function buildPages(docId, items, filter) {
         busy(pre + t('converting'));
         SHOT_FAIL = ''; TM = {};
         const t0 = Date.now();
-        const bl = isDocx(kind, it.name) ? await docxToBlobs(await getBlob()) : await xlsxToBlobs(await getBlob());
+        const src0 = await getBlob();
+        TM.read = Date.now() - t0;
+        const bl = isDocx(kind, it.name) ? await docxToBlobs(src0) : await xlsxToBlobs(src0);
         const tc = Date.now(); const conv = tc - t0;
         for (let i = 0; i < bl.length; i++) {
           busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
-          pages.push(await importImage(docId, bl[i], filter));
+          pages.push(await storeConverted(docId, bl[i], filter));
         }
         TM.imp = Date.now() - tc;
         // 显示花了多久（分段：render 排版 / shot 拍图 / imp 存入），慢方法会写原因
-        const tmS = ['render', 'shot', 'imp'].map((k) => k + ' ' + ((TM[k] || 0) / 1000).toFixed(1)).join(' · ');
+        const tmS = ['read', 'lib', 'render', 'shot', 'a4', 'imp'].map((k) => k + ' ' + ((TM[k] || 0) / 1000).toFixed(1)).join(' · ');
         setTimeout(() => toast(t('convertedIn', { n: bl.length, s: ((Date.now() - t0) / 1000).toFixed(1) }) + ' · ' + tmS + (SHOT_FAIL ? ' · slow: ' + SHOT_FAIL : ''), 8000), 300);
       } else if (isText(kind, it.name)) {
         for (const b of await textToBlobs(await getBlob())) pages.push(await importImage(docId, b, filter));
@@ -288,6 +297,7 @@ async function svgShot(el, scale) {
 }
 /** 画布放到白色 A4 上（等比例放进去，靠上） */
 async function a4Blob(cv) {
+  const ta = Date.now();
   const out = document.createElement('canvas');
   out.width = PAGE_W; out.height = PAGE_H;
   const ctx = out.getContext('2d');
@@ -295,7 +305,10 @@ async function a4Blob(cv) {
   const s = Math.min(PAGE_W / cv.width, PAGE_H / cv.height);
   ctx.drawImage(cv, 0, 0, cv.width * s, cv.height * s);
   const b = await cvBlob(out, 0.92);
-  freeCv(out);
+  const tc = toCanvas(out, { max: THUMB_MAX });
+  b.thumb = await cvBlob(tc, 0.75);
+  freeCv(tc); freeCv(out);
+  tick('a4', ta);
   return b;
 }
 function offHost(width) {
@@ -308,8 +321,10 @@ function offHost(width) {
 
 /** Word (.docx) → 每页一张图。照 Word 的分页；一页放不下的再按段落/表格行切开 */
 async function docxToBlobs(blob) {
+  const tl = Date.now();
   await loadScript('vendor/jszip.min.js');
   await loadScript('vendor/docx-preview.min.js');
+  tick('lib', tl);
   const host = offHost(1400);
   const out = [];
   try {
@@ -366,7 +381,9 @@ async function docxToBlobs(blob) {
 
 /** Excel (.xlsx) → 每个工作表排成 A4 表格页（表太宽就整体缩小；每页重复表头） */
 async function xlsxToBlobs(blob) {
+  const tl = Date.now();
   await loadScript('vendor/xlsx.mini.min.js');
+  tick('lib', tl);
   const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array', cellDates: true });
   const out = [];
   for (const name of wb.SheetNames) {
