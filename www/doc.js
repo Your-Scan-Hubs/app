@@ -82,6 +82,14 @@ async function buildPages(docId, items, filter) {
             pages.push(p);
           }
         }
+      } else if (isDocx(kind, it.name) || isXlsx(kind, it.name)) {
+        // Word / Excel 在 app 里直接排成页面（不用别的 app）
+        busy(pre + t('converting'));
+        const bl = isDocx(kind, it.name) ? await docxToBlobs(await getBlob()) : await xlsxToBlobs(await getBlob());
+        for (let i = 0; i < bl.length; i++) {
+          busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
+          pages.push(await importImage(docId, bl[i], filter));
+        }
       } else if (isText(kind, it.name)) {
         for (const b of await textToBlobs(await getBlob())) pages.push(await importImage(docId, b, filter));
       } else if (isImage(kind, it.name) || !DOC_EXT.test(it.name || '')) {
@@ -234,6 +242,137 @@ async function pdfToBlobs(blob) {
 
 const isText = (blob, name) => /^text\/plain/i.test((blob && blob.type) || '') || /\.(txt|csv|log|md)$/i.test(name || '');
 const isImage = (blob, name) => /^image\//i.test((blob && blob.type) || '') || /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif|tiff?)$/i.test(name || '');
+
+const isDocx = (blob, name) => /wordprocessingml/i.test((blob && blob.type) || '') || /\.docx$/i.test(name || '');
+const isXlsx = (blob, name) => /spreadsheetml/i.test((blob && blob.type) || '') || /\.xlsx$/i.test(name || '');
+const PAGE_W = 1240, PAGE_H = 1754; // A4 150dpi
+
+/** 把一个画好的 HTML 区块拍成图 */
+async function shotEl(el, scale) {
+  return html2canvas(el, { scale, backgroundColor: '#ffffff', logging: false, useCORS: true });
+}
+/** 画布放到白色 A4 上（等比例放进去，靠上） */
+async function a4Blob(cv) {
+  const out = document.createElement('canvas');
+  out.width = PAGE_W; out.height = PAGE_H;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+  const s = Math.min(PAGE_W / cv.width, PAGE_H / cv.height);
+  ctx.drawImage(cv, 0, 0, cv.width * s, cv.height * s);
+  const b = await cvBlob(out, 0.92);
+  freeCv(out);
+  return b;
+}
+function offHost(width) {
+  const host = document.createElement('div');
+  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${width}px;background:#fff;color:#000;z-index:-1`;
+  document.body.appendChild(host);
+  return host;
+}
+
+/** Word (.docx) → 每页一张图。照 Word 的分页；一页放不下的再按段落/表格行切开 */
+async function docxToBlobs(blob) {
+  await loadScript('vendor/jszip.min.js');
+  await loadScript('vendor/docx-preview.min.js');
+  await loadScript('vendor/html2canvas.min.js');
+  const host = offHost(1400);
+  const out = [];
+  try {
+    await docx.renderAsync(blob, host, null, {
+      inWrapper: false, breakPages: true, ignoreLastRenderedPageBreak: false, useBase64URL: true,
+      renderHeaders: true, renderFooters: true, renderFootnotes: true, experimental: true, ignoreFonts: false,
+    });
+    await new Promise((r) => setTimeout(r, 60));
+    try { await document.fonts.ready; } catch (e) {}
+    for (const sec of host.querySelectorAll('section.docx')) {
+      const pw = sec.offsetWidth;
+      const mh = sec.style.minHeight || '';
+      const ph = (parseFloat(mh) * (/pt$/.test(mh) ? 96 / 72 : /cm$/.test(mh) ? 96 / 2.54 : /mm$/.test(mh) ? 96 / 25.4 : 1)) || pw * 1.4142;
+      const cs = getComputedStyle(sec);
+      const padT = parseFloat(cs.paddingTop) || 0, padB = parseFloat(cs.paddingBottom) || 0;
+      const scale = PAGE_W / pw;
+      const total = sec.offsetHeight;
+      if (total <= ph + 4) { const cv = await shotEl(sec, scale); out.push(await a4Blob(cv)); freeCv(cv); continue; }
+      // 太长：整段拍一张大图，再按段落/表格行/图片的底边切成一页一页
+      const top0 = sec.getBoundingClientRect().top;
+      const cuts = [...sec.querySelectorAll('p, tr, li, img, h1, h2, h3, h4, h5, h6, table')]
+        .map((e) => e.getBoundingClientRect().bottom - top0).filter((y) => y > padT).sort((x, y) => x - y);
+      const usable = ph - padT - padB;
+      const contentEnd = total - padB;
+      const s2 = Math.min(scale, 30000 / total); // 画布高度有上限
+      const full = await shotEl(sec, s2);
+      let a = 0, first = true;
+      while (a < contentEnd - 2) {
+        const start = first ? 0 : a;
+        let b = (first ? padT : a) + usable;
+        if (b < contentEnd) {
+          const ok = cuts.filter((y) => y <= b && y > b - usable * 0.5);
+          if (ok.length) b = ok[ok.length - 1];
+        } else b = contentEnd;
+        const pg = document.createElement('canvas');
+        pg.width = Math.round(pw * s2); pg.height = Math.round(ph * s2);
+        const c2 = pg.getContext('2d');
+        c2.fillStyle = '#fff'; c2.fillRect(0, 0, pg.width, pg.height);
+        const dy = first ? 0 : padT;
+        // 每页都有页眉（照第一页上面那段）
+        if (!first) c2.drawImage(full, 0, 0, pg.width, padT * s2, 0, 0, pg.width, padT * s2);
+        c2.drawImage(full, 0, start * s2, pg.width, (b - start) * s2, 0, dy * s2, pg.width, (b - start) * s2);
+        out.push(await a4Blob(pg)); freeCv(pg);
+        a = b; first = false;
+      }
+      freeCv(full);
+    }
+  } finally { host.remove(); }
+  if (!out.length) throw new Error('empty');
+  return out;
+}
+
+/** Excel (.xlsx) → 每个工作表排成 A4 表格页（表太宽就整体缩小；每页重复表头） */
+async function xlsxToBlobs(blob) {
+  await loadScript('vendor/xlsx.mini.min.js');
+  await loadScript('vendor/html2canvas.min.js');
+  const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array', cellDates: true });
+  const out = [];
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    if (!ws['!ref']) continue;
+    const html = XLSX.utils.sheet_to_html(ws, { header: '', footer: '' });
+    const host = offHost(4000);
+    try {
+      host.innerHTML = `<style>.xs{font:13px/1.35 Arial,"Noto Sans",sans-serif;padding:36px;background:#fff;display:inline-block}
+        .xs h4{margin:0 0 10px;font-size:15px}.xs table{border-collapse:collapse}
+        .xs td,.xs th{border:1px solid #999;padding:3px 6px;white-space:nowrap;vertical-align:top}</style>
+        <div class="xs"><h4>${esc(name)}</h4>${html.replace(/^[\s\S]*?(<table)/i, '$1').replace(/(<\/table>)[\s\S]*$/i, '$1')}</div>`;
+      const box = host.querySelector('.xs');
+      const table = box.querySelector('table');
+      if (!table) continue;
+      const rows = [...table.rows];
+      const pw = Math.max(794, box.offsetWidth);
+      const ph = pw * 1.4142;
+      const headH = box.querySelector('h4').offsetHeight + 10 + 72;
+      const first = rows[0];
+      // 按高度分页
+      const groups = [];
+      let cur = [], h = headH;
+      rows.slice(1).forEach((r) => {
+        const rh = r.offsetHeight;
+        if (cur.length && h + rh > ph - first.offsetHeight) { groups.push(cur); cur = []; h = headH; }
+        cur.push(r); h += rh;
+      });
+      if (cur.length || !groups.length) groups.push(cur);
+      const tbody = table.tBodies[0] || table;
+      box.style.width = pw + 'px';
+      for (const g of groups) {
+        [...tbody.rows].forEach((r) => { if (r !== first) r.remove(); });
+        g.forEach((r) => tbody.appendChild(r));
+        const cv = await shotEl(box, PAGE_W / pw);
+        out.push(await a4Blob(cv)); freeCv(cv);
+      }
+    } finally { host.remove(); }
+  }
+  if (!out.length) throw new Error('empty');
+  return out;
+}
 
 /** 文字文件排成 A4 页面 */
 async function textToBlobs(blob) {
