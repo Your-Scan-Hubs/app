@@ -249,7 +249,30 @@ const PAGE_W = 1240, PAGE_H = 1754; // A4 150dpi
 
 /** 把一个画好的 HTML 区块拍成图 */
 async function shotEl(el, scale) {
+  // 快的方法：浏览器自己画（SVG foreignObject），失败才用 html2canvas
+  try { return await svgShot(el, scale); } catch (e) {}
+  await loadScript('vendor/html2canvas.min.js');
   return html2canvas(el, { scale, backgroundColor: '#ffffff', logging: false, useCORS: true });
+}
+async function svgShot(el, scale) {
+  const w = Math.ceil(el.offsetWidth), h = Math.ceil(el.offsetHeight);
+  const host = el.closest('.offhost') || document;
+  const css = [...host.querySelectorAll('style')].map((x) => x.textContent).join('\n');
+  const xml = new XMLSerializer().serializeToString(el);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="background:#fff;width:${w}px"><style>${css.replace(/<\/style/gi, '')}</style>${xml}</div></foreignObject></svg>`;
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    ctx.getImageData(0, 0, 1, 1); // 确认没被浏览器锁住（锁住会出错→改用 html2canvas）
+    return cv;
+  }
 }
 /** 画布放到白色 A4 上（等比例放进去，靠上） */
 async function a4Blob(cv) {
@@ -265,6 +288,7 @@ async function a4Blob(cv) {
 }
 function offHost(width) {
   const host = document.createElement('div');
+  host.className = 'offhost';
   host.style.cssText = `position:fixed;left:-20000px;top:0;width:${width}px;background:#fff;color:#000;z-index:-1`;
   document.body.appendChild(host);
   return host;
@@ -274,7 +298,6 @@ function offHost(width) {
 async function docxToBlobs(blob) {
   await loadScript('vendor/jszip.min.js');
   await loadScript('vendor/docx-preview.min.js');
-  await loadScript('vendor/html2canvas.min.js');
   const host = offHost(1400);
   const out = [];
   try {
@@ -330,7 +353,6 @@ async function docxToBlobs(blob) {
 /** Excel (.xlsx) → 每个工作表排成 A4 表格页（表太宽就整体缩小；每页重复表头） */
 async function xlsxToBlobs(blob) {
   await loadScript('vendor/xlsx.mini.min.js');
-  await loadScript('vendor/html2canvas.min.js');
   const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array', cellDates: true });
   const out = [];
   for (const name of wb.SheetNames) {
