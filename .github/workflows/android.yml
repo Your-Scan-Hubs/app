@@ -222,4 +222,5 @@ jobs:
           packageName: com.yourscanhubs.app
           releaseFiles: YourScanner.aab
           track: alpha
-          status: completed
+          # 先放草稿：Play 的广告声明改好、测试没问题后，再到 Play Console 发布
+          status: draft
