@@ -1745,13 +1745,15 @@ async function saveToGallery(d, pages) {
   try {
     const files = await renderPagesToFiles(d, pages || d.pages);
     if (!NATIVE) return files.forEach((f) => webDownload(f.url, f.name));
+    // iPhone：用系统分享面板（里面有「存储图像」）
+    if (!YsNative) return await ShareP.share({ title: d.name, files: files.map((f) => f.uri), dialogTitle: t('share') });
     busy(t('saving'));
     for (const f of files) await YsNative.saveToGallery({ path: f.uri, name: f.name, mime: 'image/jpeg' });
     busy(false);
     toast(t('savedGallery', { n: files.length }), 3000);
   } catch (e) {
     busy(false);
-    toast(t('saveFail') + (e.message || e), 4000);
+    if (!isCancel(e)) toast(t('saveFail') + (e.message || e), 4000);
   }
 }
 
@@ -1759,11 +1761,12 @@ async function savePdfToDevice(d) {
   try {
     await ensurePdf(d);
     if (!NATIVE) return webDownload(store.url(pagePath(d, d.pdf)), d.pdf);
+    if (!YsNative) return await sharePdfSystem(d); // iPhone：分享面板里选「存储到文件」
     await YsNative.saveToDownloads({ path: store.uri(pagePath(d, d.pdf)), name: d.pdf, mime: 'application/pdf' });
     toast(t('savedDevice', { name: d.pdf }), 3500);
   } catch (e) {
     busy(false);
-    toast(t('saveFail') + (e.message || e), 4000);
+    if (!isCancel(e)) toast(t('saveFail') + (e.message || e), 4000);
   }
 }
 
@@ -1771,11 +1774,19 @@ async function printPdf(d) {
   try {
     await ensurePdf(d);
     if (!NATIVE) return toast(t('phoneOnly'));
+    if (!YsNative) return await sharePdfSystem(d); // iPhone：分享面板里有「打印」
     await YsNative.print({ path: store.uri(pagePath(d, d.pdf)), name: d.pdf });
   } catch (e) {
     busy(false);
-    toast(t('printFail') + (e.message || e), 4000);
+    if (!isCancel(e)) toast(t('printFail') + (e.message || e), 4000);
   }
+}
+
+/** iPhone 用：把 PDF 交给系统分享面板（存储到文件 / 打印 / 邮件等） */
+async function sharePdfSystem(d) {
+  await store.clearShare();
+  const uri = await store.copyToShare(pagePath(d, d.pdf), d.pdf);
+  await ShareP.share({ title: d.name, files: [uri], dialogTitle: t('share') });
 }
 
 async function emailPdf(d) {

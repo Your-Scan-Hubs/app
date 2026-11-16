@@ -449,6 +449,8 @@ async function getScan() {
     toast(t('noCamWeb'));
     return pickImages();
   }
+  // iPhone：没有 ML Kit 扫描，用系统的「拍照 / 照片图库」选择
+  if (!Scanner) return pickImages();
   try {
     await ensureScannerModule();
     const r = await Scanner.scanDocument({ galleryImportAllowed: true, pageLimit: 50, resultFormats: 'JPEG', scannerMode: DB.settings.scanMode || 'FULL' });

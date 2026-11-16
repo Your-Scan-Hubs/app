@@ -7,7 +7,9 @@
 
 const C = window.Capacitor;
 const NATIVE = !!(C && C.isNativePlatform && C.isNativePlatform());
-const plug = (n) => (NATIVE ? C.registerPlugin(n) : null);
+const IOS = NATIVE && C.getPlatform && C.getPlatform() === 'ios';
+// iPhone 版没有 Android 专用的原生插件（扫描、OCR、YsNative 等），没有的就当作不存在，走网页方式
+const plug = (n) => (NATIVE && (!IOS || (C.isPluginAvailable && C.isPluginAvailable(n))) ? C.registerPlugin(n) : null);
 const FS = plug('Filesystem');
 const ShareP = plug('Share');
 const Scanner = plug('DocumentScanner');

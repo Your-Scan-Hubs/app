@@ -1,0 +1,73 @@
+name: Build iOS (unsigned IPA)
+
+# 手动运行：GitHub → Actions → Build iOS (unsigned IPA) → Run workflow
+# 打包出未签名的 YourScanner.ipa，用 Sideloadly / 爱思助手签名装到 iPhone 测试
+# iPhone 版说明：没有 ML Kit 自动扫描、离线文字识别和"从别的 App 分享进来"（这些是 Android 专用插件）；
+# 拍照 / 选照片、裁切、滤镜、合成 PDF、拼图、分享都可以用。
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Capacitor
+        run: |
+          npm install
+          npm install @capacitor/ios@^7.0.0
+          # Android 专用插件（广告、ML Kit 扫描、分享进来）iPhone 版不装
+          npm uninstall @capacitor-community/admob @capacitor-mlkit/document-scanner send-intent
+
+      - name: Create iOS project
+        run: |
+          npx cap add ios
+          ICONSET=$(find ios/App/App/Assets.xcassets -name AppIcon.appiconset -type d | head -1)
+          echo "iconset: $ICONSET"; ls "$ICONSET"
+          cp native/icon/icon-1024.png "$ICONSET/AppIcon-512@2x.png"
+          SPL=$(find ios/App/App/Assets.xcassets -name Splash.imageset -type d | head -1)
+          echo "splash set: $SPL"; ls "$SPL"
+          rm -f "$SPL"/*.png
+          cp native/splash/splash-light.png "$SPL/splash-light.png"
+          cp native/splash/splash-dark.png "$SPL/splash-dark.png"
+          cat > "$SPL/Contents.json" <<'JSON'
+          {"images":[{"idiom":"universal","filename":"splash-light.png","scale":"1x"},{"idiom":"universal","filename":"splash-light.png","scale":"2x"},{"idiom":"universal","filename":"splash-light.png","scale":"3x"},{"appearances":[{"appearance":"luminosity","value":"dark"}],"idiom":"universal","filename":"splash-dark.png","scale":"1x"},{"appearances":[{"appearance":"luminosity","value":"dark"}],"idiom":"universal","filename":"splash-dark.png","scale":"2x"},{"appearances":[{"appearance":"luminosity","value":"dark"}],"idiom":"universal","filename":"splash-dark.png","scale":"3x"}],"info":{"version":1,"author":"xcode"}}
+          JSON
+          PLIST=ios/App/App/Info.plist
+          pb() { /usr/libexec/PlistBuddy -c "Set :$1 $3" $PLIST 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" $PLIST; }
+          pb NSCameraUsageDescription string "Take photos of documents to scan."
+          pb NSPhotoLibraryUsageDescription string "Choose photos to turn into PDF documents."
+          pb NSPhotoLibraryAddUsageDescription string "Save scanned pages to your photos."
+          pb CFBundleShortVersionString string "1.0.${{ github.run_number }}"
+          pb CFBundleVersion string "${{ github.run_number }}"
+          npx cap sync ios
+
+      - name: Build app (no signing)
+        run: |
+          cd ios/App
+          if [ -d App.xcworkspace ]; then TARGET="-workspace App.xcworkspace"; else TARGET="-project App.xcodeproj"; fi
+          xcodebuild $TARGET -scheme App -configuration Release -sdk iphoneos \
+            -derivedDataPath build \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R ios/App/build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qr YourScanner.ipa Payload
+
+      # 发布到仓库的 Releases，直接下载 .ipa（不是 zip）
+      - name: Publish to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ios-latest >/dev/null 2>&1 || gh release create ios-latest --title "iPhone 测试版（未签名）" --notes "每次打包后自动更新。直接下载 YourScanner.ipa，用 Sideloadly 签名安装。" --prerelease
+          gh release upload ios-latest YourScanner.ipa --clobber
