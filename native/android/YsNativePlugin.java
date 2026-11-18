@@ -659,6 +659,58 @@ public class YsNativePlugin extends Plugin {
         }).start();
     }
 
+    /** PDF 里有没有填写框/批注（系统渲染器画不出这些字，要换别的引擎） */
+    @PluginMethod
+    public void pdfHasAnnots(PluginCall call) {
+        File src = fileFrom(call.getString("path"));
+        JSObject r = new JSObject();
+        boolean has = false;
+        try {
+            if (src != null && src.exists() && src.length() < 80L * 1024 * 1024) {
+                byte[] data = new byte[(int) src.length()];
+                try (java.io.FileInputStream in = new java.io.FileInputStream(src)) {
+                    int off = 0, n;
+                    while (off < data.length && (n = in.read(data, off, data.length - off)) > 0) off += n;
+                }
+                String s = new String(data, java.nio.charset.StandardCharsets.ISO_8859_1);
+                has = pdfMarks(s);
+                // 新格式的 PDF 会把批注压缩在「对象流」里，要解开再找
+                int at = 0;
+                while (!has && (at = s.indexOf("/ObjStm", at)) >= 0) {
+                    int st = s.indexOf("stream", at);
+                    if (st < 0) break;
+                    st += 6;
+                    if (st < data.length && data[st] == '\r') st++;
+                    if (st < data.length && data[st] == '\n') st++;
+                    int en = s.indexOf("endstream", st);
+                    if (en < 0) break;
+                    try {
+                        java.util.zip.Inflater inf = new java.util.zip.Inflater();
+                        inf.setInput(data, st, en - st);
+                        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                        byte[] buf = new byte[32768];
+                        while (!inf.finished() && bo.size() < 16 * 1024 * 1024) {
+                            int k = inf.inflate(buf);
+                            if (k == 0 && (inf.needsInput() || inf.needsDictionary())) break;
+                            bo.write(buf, 0, k);
+                        }
+                        inf.end();
+                        has = pdfMarks(bo.toString("ISO-8859-1"));
+                    } catch (Exception ignore) {}
+                    at = en;
+                }
+            }
+        } catch (Exception e) { /* 查不出来就当没有 */ }
+        r.put("has", has);
+        call.resolve(r);
+    }
+
+    private static boolean pdfMarks(String s) {
+        String[] k = {"/AcroForm", "/Widget", "/FreeText", "/Stamp", "/Ink", "/Highlight", "/Underline", "/StrikeOut", "/Square", "/Circle", "/Polygon", "/PolyLine", "/Caret", "/Text /", "/Subtype/Text", "/Subtype /Text"};
+        for (String x : k) if (s.contains(x)) return true;
+        return false;
+    }
+
     /** PDF 每一页转成图片（Android 自带 PdfRenderer，很快） */
     @PluginMethod
     public void pdfToImages(PluginCall call) {
