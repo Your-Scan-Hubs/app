@@ -76,7 +76,7 @@ async function buildPages(docId, items, filter) {
             let ann = false;
             try { ann = !!(await YsNative.pdfHasAnnots({ path })).has; } catch (e) {}
             if (ann) throw new Error('annots');
-            const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 1800, thumbMax: THUMB_MAX });
+            const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 2480, thumbMax: THUMB_MAX });
             const src = await keepSourcePdf(docId, path, it);
             (r.pages || []).forEach((x, i) => { const p = mkPage(x, filter); if (src) p.src = { f: src, i }; pages.push(p); });
             done = true;
@@ -244,7 +244,7 @@ async function pdfToBlobs(blob) {
     busy(t('pdfPageN', { i, n: pdf.numPages }));
     const page = await pdf.getPage(i);
     const v1 = page.getViewport({ scale: 1 });
-    const scale = Math.min(3, 2200 / Math.max(v1.width, v1.height));
+    const scale = Math.min(3, 2480 / Math.max(v1.width, v1.height));
     const vp = page.getViewport({ scale });
     const cv = document.createElement('canvas');
     cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
@@ -1557,7 +1557,7 @@ async function buildPdf(d, onProgress) {
   };
   // 没改过、没水印的页面：直接用原 PDF 的那一页（最清楚、最快）。同一个原档一次复制，共用的字体/图片只放一份
   const copied = {};
-  if (!(o.wm || '').trim()) {
+  if (!(o.wm || '').trim() && o.keep === '1') {
     const bySrc = {};
     d.pages.forEach((pg) => { if (pg.src && untouched(pg)) (bySrc[pg.src.f] = bySrc[pg.src.f] || []).push(pg.src.i); });
     for (const f of Object.keys(bySrc)) {
@@ -1574,7 +1574,7 @@ async function buildPdf(d, onProgress) {
   for (let i = 0; i < d.pages.length; i++) {
     if (onProgress) onProgress(i + 1, d.pages.length);
     const pg = d.pages[i];
-    const key = pg.src && untouched(pg) ? pg.src.f + '#' + pg.src.i : null;
+    const key = o.keep === '1' && pg.src && untouched(pg) ? pg.src.f + '#' + pg.src.i : null;
     if (key && copied[key] && !used.has(key)) { pdf.addPage(copied[key]); used.add(key); continue; }
     const raw = await store.read(pagePath(d, pg.f));
     let img = null, w, h;
@@ -1615,6 +1615,7 @@ async function buildPdf(d, onProgress) {
 let pdfJob = null;
 /** 需要时才生成 PDF（改过才重做） */
 async function ensurePdf(d, quiet) {
+  if (d.pdf && d.pdfV !== 2) d.pdfDirty = true; // 旧版做的 PDF 带原页，重做一次
   if (d.pdf && !d.pdfDirty) return;
   if (pdfJob && pdfJob.id === d.id) { await pdfJob.p; if (!d.pdfDirty) return; }
   const run = async () => {
@@ -1624,7 +1625,7 @@ async function ensurePdf(d, quiet) {
     if (d.pdf && d.pdf !== name) await store.del(pagePath(d, d.pdf));
     d.pdf = name;
     d.pdfSize = bytes.length;
-    d.pdfDirty = false;
+    d.pdfDirty = false; d.pdfV = 2;
     await saveDB();
   };
   pdfJob = { id: d.id, p: run() };
@@ -1641,6 +1642,7 @@ async function pdfSheet(d) {
     <p class="desc" id="ps-size">${esc(t('pdfInfo', { n: d.pages.length, size: fmtSize(d.pdfSize) }))}</p>
     <div class="opt-label">${esc(t('paper'))}</div>${seg('ps-paper', Object.entries(PAPER).map(([k, n]) => [k, t(n)]), o.paper)}
     <div class="opt-label">${esc(t('quality'))}</div>${seg('ps-q', Object.entries(QUALITY).map(([k, q]) => [k, t(q.n)]), o.quality)}
+    ${d.pages.some((x) => x.src) ? `<div class="opt-label">${esc(t('pdfMode'))}</div>${seg('ps-keep', [['0', t('flatOpt')], ['1', t('keepOpt')]], o.keep === '1' ? '1' : '0')}` : ''}
     <div class="opt-label">${esc(t('watermark'))}</div>
     <input type="text" id="ps-wm" value="${esc(o.wm || '')}" placeholder="${esc(t('wmPh'))}" />
     <div class="tools four">
@@ -1664,6 +1666,7 @@ async function pdfSheet(d) {
     }));
     bindSeg('ps-paper', 'paper');
     bindSeg('ps-q', 'quality');
+    bindSeg('ps-keep', 'keep');
     $('#ps-wm', sh).addEventListener('change', async (e) => { o.wm = e.target.value.trim(); await rebuild(); });
     $$('.tools button', sh).forEach((b) => b.addEventListener('click', () => {
       const wm = $('#ps-wm', sh).value.trim();
