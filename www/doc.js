@@ -88,7 +88,7 @@ async function buildPages(docId, items, filter) {
           const src = await keepSourcePdf(docId, null, it);
           for (let i = 0; i < bl.length; i++) {
             busy(pre + t('loadingN', { i: i + 1, n: bl.length }));
-            const p = await importImage(docId, bl[i], filter);
+            const p = await storeConverted(docId, bl[i], filter);
             if (src) p.src = { f: src, i };
             pages.push(p);
           }
@@ -244,7 +244,7 @@ async function pdfToBlobs(blob) {
     busy(t('pdfPageN', { i, n: pdf.numPages }));
     const page = await pdf.getPage(i);
     const v1 = page.getViewport({ scale: 1 });
-    const scale = Math.min(3, 2480 / Math.max(v1.width, v1.height));
+    const scale = Math.min(2.5, 2000 / Math.max(v1.width, v1.height));
     const vp = page.getViewport({ scale });
     const cv = document.createElement('canvas');
     cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
@@ -252,8 +252,11 @@ async function pdfToBlobs(blob) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, cv.width, cv.height);
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    out.push(await cvBlob(cv, 0.9));
-    freeCv(cv);
+    const b = await cvBlob(cv, 0.88);
+    const tc = toCanvas(cv, { max: THUMB_MAX });
+    b.thumb = await cvBlob(tc, 0.75); // 缩略图顺手做，存入时不用再解码
+    freeCv(tc); freeCv(cv);
+    out.push(b);
     page.cleanup();
   }
   await pdf.destroy();
