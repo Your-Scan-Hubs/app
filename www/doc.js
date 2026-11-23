@@ -587,6 +587,28 @@ function detectQuadImg(bmp) {
     }
   }
   if (!best || isFullQuad(best.q)) return null;
+  // 已经是平的（截图、扫描件、电子档）：不裁
+  // 1) 碰到画面两边以上 → 纸本身就占满画面
+  const e = 0.02, q0 = best.q;
+  const touch = [q0.some((p) => p[0] < e), q0.some((p) => p[0] > 1 - e), q0.some((p) => p[1] < e), q0.some((p) => p[1] > 1 - e)].filter(Boolean).length;
+  if (touch >= 2) return null;
+  // 2) 框里和框外颜色差不多（外面也是白纸）→ 不是一张放在桌上的纸
+  const poly = q0.map(([x, y]) => [x * (W - 1), y * (H - 1)]);
+  const inside = (x, y) => {
+    let c = false;
+    for (let i = 0, j = 3; i < 4; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  let si = 0, ni = 0, so = 0, no = 0, paperOut = 0;
+  for (let y = 0; y < H; y += 2) for (let x = 0; x < W; x += 2) {
+    const g = gray[y * W + x];
+    if (inside(x, y)) { si += g; ni++; } else { so += g; no++; if (g > 215) paperOut++; }
+  }
+  if (!ni || !no) return null;
+  if (Math.abs(si / ni - so / no) < 40 || paperOut / no > 0.5) return null;
   // 往外放一点点，避免切到边
   const cx = best.q.reduce((a, p) => a + p[0], 0) / 4, cy = best.q.reduce((a, p) => a + p[1], 0) / 4;
   return best.q.map(([x, y]) => [Math.max(0, Math.min(1, x + (x - cx) * 0.012)), Math.max(0, Math.min(1, y + (y - cy) * 0.012))]);
