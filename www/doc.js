@@ -72,11 +72,10 @@ async function buildPages(docId, items, filter) {
             busy(pre + t('readingPdf'));
             const path = it.path || await store.blobToShare('in_' + uid() + '.pdf', it.blob);
             h = await YsNative.addListener('progress', (e) => busy(pre + t('pdfPageN', { i: e.i, n: e.n })));
-            // 有填写框/批注的 PDF，系统渲染器会漏掉里面的字，改用网页引擎（pdf.js）画
+            // 有填写框/批注的 PDF：原生用 PDFium 画；PDFium 不行时，系统渲染器会漏字，改用网页引擎（pdf.js）
             let ann = false;
             try { ann = !!(await YsNative.pdfHasAnnots({ path })).has; } catch (e) {}
-            if (ann) throw new Error('annots');
-            const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 2480, thumbMax: THUMB_MAX });
+            const r = await YsNative.pdfToImages({ path, outDir: dirUri, prefix: uid(), max: 2480, thumbMax: THUMB_MAX, needAnnots: ann });
             const src = await keepSourcePdf(docId, path, it);
             (r.pages || []).forEach((x, i) => { const p = mkPage(x, filter); if (src) p.src = { f: src, i }; pages.push(p); });
             done = true;

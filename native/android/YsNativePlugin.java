@@ -711,6 +711,44 @@ public class YsNativePlugin extends Plugin {
         return false;
     }
 
+    private static io.legere.pdfiumandroid.PdfiumCore PDFIUM;
+
+    private JSArray pdfiumRender(File src, File outDir, String prefix, int max, int thumbMax) throws Exception {
+        if (PDFIUM == null) PDFIUM = new io.legere.pdfiumandroid.PdfiumCore();
+        ParcelFileDescriptor pfd = ParcelFileDescriptor.open(src, ParcelFileDescriptor.MODE_READ_ONLY);
+        JSArray pages = new JSArray();
+        try (io.legere.pdfiumandroid.PdfDocument doc = PDFIUM.newDocument(pfd)) {
+            if (!outDir.exists()) outDir.mkdirs();
+            int n = doc.getPageCount();
+            if (n <= 0) return null;
+            for (int i = 0; i < n; i++) {
+                Bitmap bmp;
+                io.legere.pdfiumandroid.PdfPage page = doc.openPage(i);
+                if (page == null) return null;
+                try {
+                    int pw = Math.max(1, page.getPageWidthPoint()), ph = Math.max(1, page.getPageHeightPoint());
+                    float sc = Math.min(4f, (float) max / Math.max(pw, ph));
+                    int w = Math.max(1, Math.round(pw * sc));
+                    int h = Math.max(1, Math.round(ph * sc));
+                    bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                    bmp.eraseColor(Color.WHITE);
+                    page.renderPageBitmap(bmp, 0, 0, w, h, true, false, 0xFFFFFFFF, 0xFFFFFFFF);
+                } finally {
+                    try { page.close(); } catch (Exception ignore) {}
+                }
+                pages.put(writePage(bmp, outDir, prefix + "_" + i, thumbMax, 82));
+                bmp.recycle();
+                JSObject ev = new JSObject();
+                ev.put("i", i + 1);
+                ev.put("n", n);
+                notifyListeners("progress", ev);
+            }
+        } finally {
+            try { pfd.close(); } catch (Exception ignore) {}
+        }
+        return pages;
+    }
+
     /** PDF 每一页转成图片（Android 自带 PdfRenderer，很快） */
     @PluginMethod
     public void pdfToImages(PluginCall call) {
@@ -724,6 +762,18 @@ public class YsNativePlugin extends Plugin {
             return;
         }
         new Thread(() -> {
+            // 先用 PDFium（Chrome 同款引擎）：快，而且会画出填写框、批注里的字
+            try {
+                JSArray pg = pdfiumRender(src, outDir, prefix, max, thumbMax);
+                if (pg != null) {
+                    JSObject r = new JSObject();
+                    r.put("pages", pg);
+                    r.put("engine", "pdfium");
+                    call.resolve(r);
+                    return;
+                }
+            } catch (Throwable t) { /* 不行就用系统自带的 */ }
+            if (call.getBoolean("needAnnots", false)) { call.reject("pdfium"); return; } // 系统自带的画不出填写的字，让网页引擎来
             try (ParcelFileDescriptor pfd = ParcelFileDescriptor.open(src, ParcelFileDescriptor.MODE_READ_ONLY);
                  PdfRenderer renderer = new PdfRenderer(pfd)) {
                 if (!outDir.exists()) outDir.mkdirs();

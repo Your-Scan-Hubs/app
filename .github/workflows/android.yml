@@ -93,6 +93,13 @@ jobs:
 
           dependencies {
               implementation 'com.google.android.gms:play-services-mlkit-text-recognition-chinese:16.0.1'
+              // PDFium：导入 PDF 时画出填写框/批注里的字，比网页引擎快很多
+              implementation 'io.legere:pdfiumandroid:2.0.3'
+          }
+          android {
+              defaultConfig {
+                  ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
+              }
           }
           GRADLE
 
