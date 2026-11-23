@@ -287,15 +287,19 @@ async function svgShot(el, scale) {
   const css = [...host.querySelectorAll('style')].map((x) => x.textContent).join('\n').replace(/@font-face\s*{[^}]*blob:[^}]*}/g, '');
   // blob: 连结（嵌入字体等）放进 SVG 会画不出来，先拿掉
   const xml = new XMLSerializer().serializeToString(el).replace(/blob:[^"')\s]+/g, '');
+  // 只带用到的替代字体（每个字体文件很大）
+  const used = (OFFICE_CSS || '').split('\n').filter((l) => { const m = /font-family:"([^"]+)"/.exec(l); return m && (xml.includes(m[1]) || css.includes(m[1]) || getComputedStyle(el).fontFamily.includes(m[1])); }).join('\n');
   // 外面继承来的字体/行高也要带进去，不然里面排出来的行高会和屏幕上量的不一样，切页就会切歪
   const pcs = getComputedStyle(el.parentElement || el);
   const inh = ['font-family', 'font-size', 'line-height', 'font-weight', 'color', 'letter-spacing', 'word-break', 'white-space'].map((k) => k + ':' + pcs.getPropertyValue(k)).join(';').replace(/"/g, "'");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="background:#fff;width:${w}px;${inh}"><style>${css.replace(/<\/style/gi, '')}</style>${xml}</div></foreignObject></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="background:#fff;width:${w}px;${inh}"><style>${(used + '\n' + css).replace(/<\/style/gi, '')}</style>${xml}</div></foreignObject></svg>`;
   const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   {
     const img = new Image();
     img.src = url;
     await img.decode();
+    // SVG 里的字体是另外载入的，decode 完不一定好了：先画一次让它开始载入，稍等再画
+    if (used) { const t = document.createElement('canvas'); t.width = t.height = 8; t.getContext('2d').drawImage(img, 0, 0, 8, 8); await new Promise((r) => setTimeout(r, 120)); }
     const cv = document.createElement('canvas');
     cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
     const ctx = cv.getContext('2d');
@@ -313,7 +317,7 @@ async function a4Blob(cv) {
   const ctx = out.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, PAGE_W, PAGE_H);
   const s = Math.min(PAGE_W / cv.width, PAGE_H / cv.height);
-  ctx.drawImage(cv, 0, 0, cv.width * s, cv.height * s);
+  ctx.drawImage(cv, Math.round((PAGE_W - cv.width * s) / 2), 0, cv.width * s, cv.height * s);
   const b = await cvBlob(out, 0.92);
   const tc = toCanvas(out, { max: THUMB_MAX });
   b.thumb = await cvBlob(tc, 0.75);
@@ -330,11 +334,47 @@ function offHost(width) {
 }
 
 /** Word (.docx) → 每页一张图。照 Word 的分页；一页放不下的再按段落/表格行切开 */
+/** Word 常用字体的同尺寸替代字（Calibri→Carlito 等），换行、分页才会跟 Word 一样 */
+let OFFICE_CSS = null;
+async function officeFonts() {
+  if (OFFICE_CSS !== null) return OFFICE_CSS;
+  const fams = { carlito: ['Calibri', 'Calibri Light', 'Carlito'], arimo: ['Arial', 'Helvetica', 'Arimo'], tinos: ['Times New Roman', 'Times', 'Tinos'], caladea: ['Cambria', 'Caladea'] };
+  const toData = async (u) => {
+    const b = await (await fetch(u)).blob();
+    return await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+  };
+  let css = '';
+  try {
+    for (const [f, names] of Object.entries(fams)) {
+      for (const v of ['400-normal', '400-italic', '700-normal', '700-italic']) {
+        const url = await toData(`vendor/fonts/${f}-latin-${v}.woff2`);
+        const [w, st] = v.split('-');
+        for (const n of names) css += `@font-face{font-family:"${n}";src:url(${url}) format("woff2");font-weight:${w};font-style:${st}}\n`;
+      }
+    }
+  } catch (e) { css = ''; }
+  OFFICE_CSS = css;
+  if (css) { const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st); }
+  return css;
+}
+/** Word 存档时记下的页数（docProps/app.xml），用来对齐页数 */
+async function wordPageCount(blob) {
+  try {
+    const z = await JSZip.loadAsync(blob);
+    const f = z.file('docProps/app.xml');
+    if (!f) return 0;
+    const m = /<Pages>(\d+)<\/Pages>/.exec(await f.async('string'));
+    return m ? +m[1] : 0;
+  } catch (e) { return 0; }
+}
+
 async function docxToBlobs(blob) {
   const tl = Date.now();
   await loadScript('vendor/jszip.min.js');
   await loadScript('vendor/docx-preview.min.js');
+  await officeFonts();
   tick('lib', tl);
+  const wantPages = await wordPageCount(blob);
   const host = offHost(1400);
   const out = [];
   try {
@@ -346,14 +386,21 @@ async function docxToBlobs(blob) {
     await new Promise((r) => setTimeout(r, 60));
     try { await document.fonts.ready; } catch (e) {}
     tick('render', tr);
-    for (const sec of host.querySelectorAll('section.docx')) {
+    const secs = [...host.querySelectorAll('section.docx')];
+    for (const sec of secs) {
       const pw = sec.offsetWidth;
       const mh = sec.style.minHeight || '';
-      const ph = (parseFloat(mh) * (/pt$/.test(mh) ? 96 / 72 : /cm$/.test(mh) ? 96 / 2.54 : /mm$/.test(mh) ? 96 / 25.4 : 1)) || pw * 1.4142;
+      let ph = (parseFloat(mh) * (/pt$/.test(mh) ? 96 / 72 : /cm$/.test(mh) ? 96 / 2.54 : /mm$/.test(mh) ? 96 / 25.4 : 1)) || pw * 1.4142;
       const cs = getComputedStyle(sec);
       const padT = parseFloat(cs.paddingTop) || 0, padB = parseFloat(cs.paddingBottom) || 0;
       const scale = PAGE_W / pw;
       const total = sec.offsetHeight;
+      // 比 Word 多出一点点就跑到下一页：整体稍微缩小，让页数跟 Word 一样（最多缩到 75%）
+      if (secs.length === 1 && wantPages > 0) {
+        const usable0 = ph - padT - padB;
+        const need = Math.ceil((total - padT - padB - 2) / usable0);
+        if (need > wantPages && total <= wantPages * ph / 0.75) ph = Math.max(ph, (total + 2) / wantPages);
+      }
       if (total <= ph + 4) { const cv = await shotEl(sec, scale); out.push(await a4Blob(cv)); freeCv(cv); continue; }
       // 太长：整段拍一张大图，再按段落/表格行/图片的底边切成一页一页
       const top0 = sec.getBoundingClientRect().top;
